@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>名刺管理 App</title>
+  
+  <!-- PWA Settings -->
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#0f172a">
+  <link rel="apple-touch-icon" href="icon.svg">
+  
+  <!-- Google Fonts & Lucide Icons -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <!-- Google Identity Services (GIS) -->
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="app" class="app-container">
+    
+    <!-- 1. AUTH SCREEN (ログイン画面) -->
+    <section id="screen-auth" class="screen active">
+      <div class="auth-card glass">
+        <div class="auth-logo">
+          <div class="logo-icon-wrapper">
+            <i data-lucide="contact-2"></i>
+          </div>
+          <h1>CardVault</h1>
+          <p>Google Drive で管理するスマート名刺フォルダ</p>
+        </div>
+        
+        <div class="auth-actions">
+          <button id="btn-login" class="btn btn-primary btn-lg">
+            <i data-lucide="log-in"></i>
+            <span>Google アカウントでサインイン</span>
+          </button>
+          
+          <button id="btn-open-setup" class="btn btn-text">
+            <i data-lucide="settings"></i>
+            <span>初期設定 (OAuth クライアントID)</span>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 2. MAIN SCREEN (メイン・スワイプ名刺一覧画面) -->
+    <section id="screen-main" class="screen">
+      <!-- 検索・フィルターヘッダー -->
+      <header class="main-header glass">
+        <div class="header-top">
+          <div class="app-title">
+            <i data-lucide="contact-2"></i>
+            <span>CardVault</span>
+          </div>
+          <div class="header-actions">
+            <button id="btn-sync" class="btn-icon" title="同期">
+              <i data-lucide="rotate-cw"></i>
+            </button>
+            <button id="btn-add-card" class="btn-icon btn-add" title="新規登録">
+              <i data-lucide="plus"></i>
+            </button>
+            <button id="btn-settings" class="btn-icon" title="設定">
+              <i data-lucide="settings"></i>
+            </button>
+          </div>
+        </div>
+        
+        <!-- 検索バー -->
+        <div class="search-bar">
+          <i data-lucide="search"></i>
+          <input type="text" id="search-input" placeholder="名前・アルファベットで検索..." autocomplete="off">
+          <button id="btn-clear-search" class="btn-clear hidden">
+            <i data-lucide="x"></i>
+          </button>
+        </div>
+
+        <!-- タグフィルター (横スクロール) -->
+        <div class="tag-filter-container">
+          <div id="tag-filters" class="tag-filters">
+            <button class="tag-filter-item active" data-tag="all">すべて</button>
+            <!-- 動的にタグが追加されます -->
+          </div>
+        </div>
+      </header>
+
+      <!-- スワイプカードエリア -->
+      <main class="card-viewer-container">
+        <!-- カードスタック（Tinder風フリック）またはスライダー -->
+        <div id="card-deck" class="card-deck">
+          <!-- JSで動的にカードが挿入されます -->
+          <div class="empty-state">
+            <i data-lucide="inbox"></i>
+            <p>名刺が登録されていません</p>
+            <button id="btn-empty-add" class="btn btn-primary">
+              <i data-lucide="plus"></i>
+              <span>最初の一枚を登録する</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- ページネーション・操作インジケータ -->
+        <div id="card-indicator" class="card-indicator hidden">
+          <button id="btn-prev-card" class="indicator-btn"><i data-lucide="chevron-left"></i></button>
+          <span id="card-counter">0 / 0</span>
+          <button id="btn-next-card" class="indicator-btn"><i data-lucide="chevron-right"></i></button>
+        </div>
+      </main>
+    </section>
+
+    <!-- 3. ADD CARD SCREEN (名刺新規登録モーダル/画面) -->
+    <section id="screen-add" class="screen">
+      <div class="screen-content glass-fullscreen">
+        <header class="sub-header">
+          <button id="btn-cancel-add" class="btn-back">
+            <i data-lucide="arrow-left"></i>
+          </button>
+          <h2>新規名刺登録</h2>
+          <div></div>
+        </header>
+
+        <form id="form-add-card" class="form-container">
+          <!-- 画像撮影・選択エリア -->
+          <div class="photo-upload-container">
+            <div id="photo-preview-wrapper" class="photo-preview-wrapper">
+              <img id="photo-preview" src="" alt="名刺プレビュー" class="hidden">
+              <div id="photo-placeholder" class="photo-placeholder">
+                <i data-lucide="camera"></i>
+                <span>名刺を撮影または画像を選択</span>
+              </div>
+            </div>
+            <input type="file" id="input-file" accept="image/*" capture="environment" class="hidden">
+            <div class="photo-buttons">
+              <button type="button" id="btn-capture" class="btn btn-secondary">
+                <i data-lucide="camera"></i>
+                <span>写真を撮る</span>
+              </button>
+              <button type="button" id="btn-gallery" class="btn btn-secondary">
+                <i data-lucide="image"></i>
+                <span>アルバムから選択</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- 入力項目 -->
+          <div class="form-fields">
+            <div class="form-group">
+              <label for="input-name">氏名 / 会社名</label>
+              <input type="text" id="input-name" placeholder="例：山田 太郎 / 株式会社サンプル" required>
+            </div>
+            
+            <div class="form-group">
+              <label for="input-alphabet">検索用アルファベット (半角英数)</label>
+              <input type="text" id="input-alphabet" placeholder="例：Yamada Taro / Sample Inc" required pattern="^[a-zA-Z0-9\s\-]+$" title="半角英数字とスペースのみ入力可能です">
+            </div>
+
+            <div class="form-group">
+              <label>タグ付け</label>
+              <div class="tag-input-wrapper">
+                <input type="text" id="input-tag" placeholder="タグを入力してEnterで追加">
+                <button type="button" id="btn-add-tag" class="btn btn-secondary btn-sm">追加</button>
+              </div>
+              <div id="added-tags-list" class="added-tags-list">
+                <!-- 動的に追加されたタグが表示されます -->
+              </div>
+            </div>
+          </div>
+
+          <div class="form-actions">
+            <button type="submit" id="btn-submit-card" class="btn btn-primary btn-lg btn-block">
+              <i data-lucide="cloud-upload"></i>
+              <span>Google ドライブへ保存</span>
+            </button>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <!-- 4. SETTINGS SCREEN (設定モーダル/画面) -->
+    <section id="screen-settings" class="screen">
+      <div class="screen-content glass-fullscreen">
+        <header class="sub-header">
+          <button id="btn-close-settings" class="btn-back">
+            <i data-lucide="arrow-left"></i>
+          </button>
+          <h2>アプリ設定</h2>
+          <div></div>
+        </header>
+
+        <div class="settings-container">
+          <div class="settings-section glass-card">
+            <h3>Google API 認証設定</h3>
+            <p class="section-desc">Google Driveへアクセスするため、ご自身の Google Cloud Console で作成したOAuthクライアントIDを入力してください。</p>
+            
+            <div class="form-group">
+              <label for="input-client-id">OAuth クライアントID</label>
+              <input type="text" id="input-client-id" placeholder="xxxx-xxxx.apps.googleusercontent.com">
+            </div>
+            
+            <button id="btn-save-settings" class="btn btn-primary">設定を保存</button>
+          </div>
+
+          <div class="settings-section glass-card">
+            <h3>アカウント</h3>
+            <div class="account-info">
+              <div class="user-profile">
+                <div id="user-avatar" class="user-avatar">
+                  <i data-lucide="user"></i>
+                </div>
+                <div class="user-details">
+                  <span id="user-name" class="user-name">未サインイン</span>
+                  <span id="user-email" class="user-email">-</span>
+                </div>
+              </div>
+              <button id="btn-logout" class="btn btn-danger btn-block">
+                <i data-lucide="log-out"></i>
+                <span>ログアウト</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="settings-section glass-card">
+            <h3>アプリ情報</h3>
+            <ul class="info-list">
+              <li>
+                <span>バージョン</span>
+                <span>1.0.0 (PWA)</span>
+              </li>
+              <li>
+                <span>ストレージ</span>
+                <span>Google ドライブ (BusinessCardManagerApp フォルダ)</span>
+              </li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 全画面ローディングオーバーレイ -->
+    <div id="loading-overlay" class="loading-overlay hidden">
+      <div class="spinner-wrapper">
+        <div class="spinner"></div>
+        <p id="loading-text">読み込み中...</p>
+      </div>
+    </div>
+
+    <!-- トースト通知 -->
+    <div id="toast" class="toast hidden">
+      <span id="toast-message">メッセージ</span>
+    </div>
+
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

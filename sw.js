@@ -1,0 +1,59 @@
+const CACHE_NAME = 'bizcard-cache-v1';
+const ASSETS = [
+  './',
+  './index.html',
+  './style.css',
+  './app.js',
+  './manifest.json',
+  './icon.svg'
+];
+
+// Install Event
+self.addEventListener('install', (e) => {
+  e.waitUntil(
+    caches.open(CACHE_NAME).then((cache) => {
+      console.log('[Service Worker] Caching all assets');
+      return cache.addAll(ASSETS);
+    })
+  );
+  self.skipWaiting();
+});
+
+// Activate Event
+self.addEventListener('activate', (e) => {
+  e.waitUntil(
+    caches.keys().then((keys) => {
+      return Promise.all(
+        keys.map((key) => {
+          if (key !== CACHE_NAME) {
+            console.log('[Service Worker] Removing old cache', key);
+            return caches.delete(key);
+          }
+        })
+      );
+    })
+  );
+  return self.clients.claim();
+});
+
+// Fetch Event
+self.addEventListener('fetch', (e) => {
+  // Prevent caching for API calls or external auth requests
+  if (e.request.url.includes('googleapis.com') || e.request.url.includes('accounts.google.com')) {
+    return; // Let browser handle network
+  }
+
+  e.respondWith(
+    caches.match(e.request).then((cachedResponse) => {
+      if (cachedResponse) {
+        return cachedResponse;
+      }
+      return fetch(e.request).catch(() => {
+        // Fallback for offline if navigating
+        if (e.request.mode === 'navigate') {
+          return caches.match('./index.html');
+        }
+      });
+    })
+  );
+});
