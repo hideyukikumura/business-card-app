@@ -165,9 +165,20 @@
                 <input type="text" id="input-tag" placeholder="タグを入力してEnterで追加">
                 <button type="button" id="btn-add-tag" class="btn btn-secondary btn-sm">追加</button>
               </div>
+              <div id="existing-tags-section" class="existing-tags-section hidden">
+                <span class="existing-tags-label">既存のタグから選択</span>
+                <div id="existing-tags-list" class="existing-tags-list">
+                  <!-- 動的に既存タグの候補が表示されます -->
+                </div>
+              </div>
               <div id="added-tags-list" class="added-tags-list">
                 <!-- 動的に追加されたタグが表示されます -->
               </div>
+            </div>
+
+            <div class="form-group">
+              <label for="input-memo">メモ</label>
+              <textarea id="input-memo" rows="4" placeholder="面談内容や特徴など、自由にメモを残せます"></textarea>
             </div>
           </div>
 

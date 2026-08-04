@@ -57,9 +57,12 @@ const elements = {
   btnGallery: document.getElementById('btn-gallery'),
   inputName: document.getElementById('input-name'),
   inputAlphabet: document.getElementById('input-alphabet'),
+  inputMemo: document.getElementById('input-memo'),
   inputTag: document.getElementById('input-tag'),
   btnAddTag: document.getElementById('btn-add-tag'),
   addedTagsList: document.getElementById('added-tags-list'),
+  existingTagsSection: document.getElementById('existing-tags-section'),
+  existingTagsList: document.getElementById('existing-tags-list'),
   btnCancelAdd: document.getElementById('btn-cancel-add'),
   btnSubmitCard: document.getElementById('btn-submit-card'),
   btnSubmitText: document.getElementById('btn-submit-text'),
@@ -590,6 +593,7 @@ function renderCards() {
         <div class="card-tags">
           ${card.tags ? card.tags.map(t => `<span class="card-tag">${escapeHTML(t)}</span>`).join('') : ''}
         </div>
+        ${card.memo ? `<p class="card-memo">${escapeHTML(card.memo)}</p>` : ''}
       </div>
     `;
 
@@ -738,6 +742,7 @@ async function openEditCard(cardId) {
 
   elements.inputName.value = card.name || '';
   elements.inputAlphabet.value = card.alphabet || '';
+  elements.inputMemo.value = card.memo || '';
   STATE.addedTags = card.tags ? [...card.tags] : [];
   renderAddedTags();
 
@@ -845,6 +850,13 @@ function registerEventListeners() {
     }
   });
 
+  // 新規登録：追加済みタグの削除（アイコンはlucideが再生成するため委任イベントで検知）
+  elements.addedTagsList.addEventListener('click', (e) => {
+    const btn = e.target.closest('.remove-tag-btn');
+    if (!btn) return;
+    removeTag(btn.dataset.tag);
+  });
+
   // 新規登録：送信
   elements.formAddCard.addEventListener('submit', handleAddCardSubmit);
 
@@ -929,13 +941,46 @@ function renderAddedTags() {
     `;
     elements.addedTagsList.appendChild(badge);
   });
-  
-  // バッジ内の削除ボタンにイベント登録
-  elements.addedTagsList.querySelectorAll('.remove-tag-btn').forEach(btn => {
-    btn.addEventListener('click', () => removeTag(btn.dataset.tag));
-  });
-  
+
+  renderExistingTagSuggestions();
   lucide.createIcons();
+}
+
+// 過去に登録した全名刺から使われているタグを集め、まだ追加していないものを候補として表示
+function renderExistingTagSuggestions() {
+  const allTagsSet = new Set();
+  STATE.cards.forEach(card => {
+    if (card.tags) card.tags.forEach(tag => allTagsSet.add(tag));
+  });
+
+  const availableTags = [...allTagsSet]
+    .filter(tag => !STATE.addedTags.includes(tag))
+    .sort((a, b) => a.localeCompare(b, 'ja'));
+
+  elements.existingTagsList.innerHTML = '';
+
+  if (availableTags.length === 0) {
+    elements.existingTagsSection.classList.add('hidden');
+    return;
+  }
+
+  elements.existingTagsSection.classList.remove('hidden');
+  availableTags.forEach(tag => {
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'existing-tag-chip';
+    chip.textContent = tag;
+    chip.addEventListener('click', () => addExistingTag(tag));
+    elements.existingTagsList.appendChild(chip);
+  });
+}
+
+// 既存タグ候補をクリックしたときの追加処理
+function addExistingTag(tag) {
+  if (!STATE.addedTags.includes(tag)) {
+    STATE.addedTags.push(tag);
+    renderAddedTags();
+  }
 }
 
 // 新規登録・編集送信（画像アップロード＆メタデータ保存）
@@ -956,6 +1001,7 @@ async function handleAddCardSubmit(e) {
   try {
     const name = elements.inputName.value.trim();
     const alphabet = elements.inputAlphabet.value.trim();
+    const memo = elements.inputMemo.value.trim();
     const tags = [...STATE.addedTags];
 
     if (isEditing) {
@@ -980,7 +1026,7 @@ async function handleAddCardSubmit(e) {
         }
       }
 
-      STATE.cards[cardIndex] = { ...targetCard, name, alphabet, tags, imageId };
+      STATE.cards[cardIndex] = { ...targetCard, name, alphabet, memo, tags, imageId };
 
       const saveSuccess = await saveMetadata();
       if (!saveSuccess) {
@@ -1006,6 +1052,7 @@ async function handleAddCardSubmit(e) {
         id: cardId,
         name,
         alphabet,
+        memo,
         tags,
         imageId: driveImageId,
         createdAt: new Date().toISOString()
