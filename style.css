@@ -873,6 +873,35 @@ body {
   line-height: 1.4;
 }
 
+.lang-switch {
+  display: flex;
+  padding: 4px;
+  border-radius: 14px;
+  background: rgba(15, 23, 42, 0.5);
+  border: 1px solid var(--border-glass);
+  gap: 4px;
+}
+
+.lang-switch-btn {
+  flex: 1;
+  padding: 10px;
+  border-radius: 10px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: var(--font-family);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition-smooth);
+}
+
+.lang-switch-btn.active {
+  background: var(--accent-gradient);
+  color: var(--text-on-accent);
+  box-shadow: 0 4px 10px rgba(99, 102, 241, 0.25);
+}
+
 .account-info {
   display: flex;
   flex-direction: column;

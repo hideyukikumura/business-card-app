@@ -32,18 +32,18 @@
             <i data-lucide="contact-2"></i>
           </div>
           <h1>CardVault</h1>
-          <p>Google Drive で管理するスマート名刺フォルダ</p>
+          <p data-i18n="authTagline">Google Drive で管理するスマート名刺フォルダ</p>
         </div>
-        
+
         <div class="auth-actions">
           <button id="btn-login" class="btn btn-primary btn-lg">
             <i data-lucide="log-in"></i>
-            <span>Google アカウントでサインイン</span>
+            <span data-i18n="btnLogin">Google アカウントでサインイン</span>
           </button>
-          
+
           <button id="btn-open-setup" class="btn btn-text">
             <i data-lucide="settings"></i>
-            <span>初期設定 (OAuth クライアントID)</span>
+            <span data-i18n="btnOpenSetup">初期設定 (OAuth クライアントID)</span>
           </button>
         </div>
       </div>
@@ -59,16 +59,16 @@
             <span>CardVault</span>
           </div>
           <div class="header-actions">
-            <button id="btn-sync" class="btn-icon" title="同期">
+            <button id="btn-sync" class="btn-icon" title="同期" data-i18n-title="titleSync">
               <i data-lucide="rotate-cw"></i>
             </button>
-            <button id="btn-add-card" class="btn-icon btn-add" title="新規登録">
+            <button id="btn-add-card" class="btn-icon btn-add" title="新規登録" data-i18n-title="titleAdd">
               <i data-lucide="plus"></i>
             </button>
-            <button id="btn-kassen" class="btn-icon" title="合戦モード">
+            <button id="btn-kassen" class="btn-icon" title="合戦モード" data-i18n-title="titleKassen">
               <i data-lucide="swords"></i>
             </button>
-            <button id="btn-settings" class="btn-icon" title="設定">
+            <button id="btn-settings" class="btn-icon" title="設定" data-i18n-title="titleSettings">
               <i data-lucide="settings"></i>
             </button>
           </div>
@@ -77,7 +77,7 @@
         <!-- 検索バー -->
         <div class="search-bar">
           <i data-lucide="search"></i>
-          <input type="text" id="search-input" placeholder="名前・アルファベットで検索..." autocomplete="off">
+          <input type="text" id="search-input" placeholder="名前・アルファベットで検索..." data-i18n-placeholder="searchPlaceholder" autocomplete="off">
           <button id="btn-clear-search" class="btn-clear hidden">
             <i data-lucide="x"></i>
           </button>
@@ -86,7 +86,7 @@
         <!-- タグフィルター (横スクロール) -->
         <div class="tag-filter-container">
           <div id="tag-filters" class="tag-filters">
-            <button class="tag-filter-item active" data-tag="all">すべて</button>
+            <button class="tag-filter-item active" data-tag="all" data-i18n="tagAll">すべて</button>
             <!-- 動的にタグが追加されます -->
           </div>
         </div>
@@ -99,10 +99,10 @@
           <!-- JSで動的にカードが挿入されます -->
           <div class="empty-state">
             <i data-lucide="inbox"></i>
-            <p>名刺が登録されていません</p>
+            <p data-i18n="emptyNoCards">名刺が登録されていません</p>
             <button id="btn-empty-add" class="btn btn-primary">
               <i data-lucide="plus"></i>
-              <span>最初の一枚を登録する</span>
+              <span data-i18n="emptyAddFirst">最初の一枚を登録する</span>
             </button>
           </div>
         </div>
@@ -131,21 +131,21 @@
           <!-- 画像撮影・選択エリア -->
           <div class="photo-upload-container">
             <div id="photo-preview-wrapper" class="photo-preview-wrapper">
-              <img id="photo-preview" src="" alt="名刺プレビュー" class="hidden">
+              <img id="photo-preview" src="" alt="名刺プレビュー" data-i18n-alt="photoAlt" class="hidden">
               <div id="photo-placeholder" class="photo-placeholder">
                 <i data-lucide="camera"></i>
-                <span>名刺を撮影または画像を選択</span>
+                <span data-i18n="photoPlaceholder">名刺を撮影または画像を選択</span>
               </div>
             </div>
             <input type="file" id="input-file" accept="image/*" capture="environment" class="hidden">
             <div class="photo-buttons">
               <button type="button" id="btn-capture" class="btn btn-secondary">
                 <i data-lucide="camera"></i>
-                <span>写真を撮る</span>
+                <span data-i18n="btnCapture">写真を撮る</span>
               </button>
               <button type="button" id="btn-gallery" class="btn btn-secondary">
                 <i data-lucide="image"></i>
-                <span>アルバムから選択</span>
+                <span data-i18n="btnGallery">アルバムから選択</span>
               </button>
             </div>
           </div>
@@ -153,23 +153,23 @@
           <!-- 入力項目 -->
           <div class="form-fields">
             <div class="form-group">
-              <label for="input-name">氏名 / 会社名</label>
-              <input type="text" id="input-name" placeholder="例：山田 太郎 / 株式会社サンプル" required>
-            </div>
-            
-            <div class="form-group">
-              <label for="input-alphabet">検索用アルファベット (半角英数)</label>
-              <input type="text" id="input-alphabet" placeholder="例：Yamada Taro / Sample Inc" required pattern="^[a-zA-Z0-9\s\-]+$" title="半角英数字とスペースのみ入力可能です">
+              <label for="input-name" data-i18n="labelName">氏名 / 会社名</label>
+              <input type="text" id="input-name" placeholder="例：山田 太郎 / 株式会社サンプル" data-i18n-placeholder="placeholderName" required>
             </div>
 
             <div class="form-group">
-              <label>タグ付け</label>
+              <label for="input-alphabet" data-i18n="labelAlphabet">検索用アルファベット (半角英数)</label>
+              <input type="text" id="input-alphabet" placeholder="例：Yamada Taro / Sample Inc" data-i18n-placeholder="placeholderAlphabet" required pattern="^[a-zA-Z0-9\s\-]+$" title="半角英数字とスペースのみ入力可能です" data-i18n-title="alphabetPatternTitle">
+            </div>
+
+            <div class="form-group">
+              <label data-i18n="labelTags">タグ付け</label>
               <div class="tag-input-wrapper">
-                <input type="text" id="input-tag" placeholder="タグを入力してEnterで追加">
-                <button type="button" id="btn-add-tag" class="btn btn-secondary btn-sm">追加</button>
+                <input type="text" id="input-tag" placeholder="タグを入力してEnterで追加" data-i18n-placeholder="placeholderTagInput">
+                <button type="button" id="btn-add-tag" class="btn btn-secondary btn-sm" data-i18n="btnAddTag">追加</button>
               </div>
               <div id="existing-tags-section" class="existing-tags-section hidden">
-                <span class="existing-tags-label">既存のタグから選択</span>
+                <span class="existing-tags-label" data-i18n="labelExistingTags">既存のタグから選択</span>
                 <div id="existing-tags-list" class="existing-tags-list">
                   <!-- 動的に既存タグの候補が表示されます -->
                 </div>
@@ -180,8 +180,8 @@
             </div>
 
             <div class="form-group">
-              <label for="input-memo">メモ</label>
-              <textarea id="input-memo" rows="4" placeholder="面談内容や特徴など、自由にメモを残せます"></textarea>
+              <label for="input-memo" data-i18n="labelMemo">メモ</label>
+              <textarea id="input-memo" rows="4" placeholder="面談内容や特徴など、自由にメモを残せます" data-i18n-placeholder="placeholderMemo"></textarea>
             </div>
           </div>
 
@@ -202,25 +202,33 @@
           <button id="btn-close-settings" class="btn-back">
             <i data-lucide="arrow-left"></i>
           </button>
-          <h2>アプリ設定</h2>
+          <h2 data-i18n="headingSettings">アプリ設定</h2>
           <div></div>
         </header>
 
         <div class="settings-container">
           <div class="settings-section glass-card">
-            <h3>Google API 認証設定</h3>
-            <p class="section-desc">Google Driveへアクセスするため、ご自身の Google Cloud Console で作成したOAuthクライアントIDを入力してください。</p>
-            
-            <div class="form-group">
-              <label for="input-client-id">OAuth クライアントID</label>
-              <input type="text" id="input-client-id" placeholder="xxxx-xxxx.apps.googleusercontent.com">
+            <h3 data-i18n="headingLanguage">言語</h3>
+            <div id="lang-switch" class="lang-switch">
+              <button type="button" class="lang-switch-btn" data-lang="ja">日本語</button>
+              <button type="button" class="lang-switch-btn" data-lang="en">English</button>
             </div>
-            
-            <button id="btn-save-settings" class="btn btn-primary">設定を保存</button>
           </div>
 
           <div class="settings-section glass-card">
-            <h3>アカウント</h3>
+            <h3 data-i18n="headingOAuth">Google API 認証設定</h3>
+            <p class="section-desc" data-i18n="oauthDesc">Google Driveへアクセスするため、ご自身の Google Cloud Console で作成したOAuthクライアントIDを入力してください。</p>
+
+            <div class="form-group">
+              <label for="input-client-id" data-i18n="labelClientId">OAuth クライアントID</label>
+              <input type="text" id="input-client-id" placeholder="xxxx-xxxx.apps.googleusercontent.com">
+            </div>
+
+            <button id="btn-save-settings" class="btn btn-primary" data-i18n="btnSaveSettings">設定を保存</button>
+          </div>
+
+          <div class="settings-section glass-card">
+            <h3 data-i18n="headingAccount">アカウント</h3>
             <div class="account-info">
               <div class="user-profile">
                 <div id="user-avatar" class="user-avatar">
@@ -233,21 +241,21 @@
               </div>
               <button id="btn-logout" class="btn btn-danger btn-block">
                 <i data-lucide="log-out"></i>
-                <span>ログアウト</span>
+                <span data-i18n="btnLogout">ログアウト</span>
               </button>
             </div>
           </div>
 
           <div class="settings-section glass-card">
-            <h3>アプリ情報</h3>
+            <h3 data-i18n="headingAppInfo">アプリ情報</h3>
             <ul class="info-list">
               <li>
-                <span>バージョン</span>
+                <span data-i18n="infoVersion">バージョン</span>
                 <span>1.0.0 (PWA)</span>
               </li>
               <li>
-                <span>ストレージ</span>
-                <span>Google ドライブ (BusinessCardManagerApp フォルダ)</span>
+                <span data-i18n="infoStorage">ストレージ</span>
+                <span data-i18n="infoStorageValue">Google ドライブ (BusinessCardManagerApp フォルダ)</span>
               </li>
             </ul>
           </div>
@@ -262,21 +270,21 @@
           <button id="btn-close-kassen" class="btn-back">
             <i data-lucide="arrow-left"></i>
           </button>
-          <h2>合戦モード</h2>
+          <h2 data-i18n="headingKassen">合戦モード</h2>
           <div></div>
         </header>
 
         <div class="kassen-container">
           <div id="kassen-mode-switch" class="kassen-mode-switch">
-            <button type="button" class="kassen-mode-btn active" data-mode="tag">タグモード</button>
-            <button type="button" class="kassen-mode-btn" data-mode="initial">イニシャルモード</button>
+            <button type="button" class="kassen-mode-btn active" data-mode="tag" data-i18n="modeTag">タグモード</button>
+            <button type="button" class="kassen-mode-btn" data-mode="initial" data-i18n="modeInitial">イニシャルモード</button>
           </div>
 
           <div class="kassen-map-wrapper">
             <svg id="kassen-map" class="kassen-map" viewBox="-10 -10 20 20" preserveAspectRatio="xMidYMid meet"></svg>
             <div id="kassen-empty-state" class="kassen-empty-state hidden">
               <i data-lucide="map"></i>
-              <p>名刺が登録されると大陸が生まれます</p>
+              <p data-i18n="mapEmpty">名刺が登録されると大陸が生まれます</p>
             </div>
             <div id="kassen-hex-popup" class="kassen-hex-popup hidden"></div>
           </div>
@@ -285,14 +293,14 @@
 
           <button id="btn-start-kassen" class="btn btn-primary btn-lg btn-block">
             <i data-lucide="swords"></i>
-            <span>合戦開始</span>
+            <span data-i18n="btnStartKassen">合戦開始</span>
           </button>
 
           <div id="kassen-commentary" class="kassen-commentary hidden">
             <p id="kassen-commentary-text" class="kassen-commentary-text"></p>
             <button id="btn-skip-kassen" class="btn btn-secondary btn-block">
               <i data-lucide="fast-forward"></i>
-              <span>スキップ</span>
+              <span data-i18n="btnSkipKassen">スキップ</span>
             </button>
           </div>
 
