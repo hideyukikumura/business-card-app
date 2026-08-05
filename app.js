@@ -934,10 +934,16 @@ function updateIndicator() {
 function scrollToCard(index, smooth = true) {
   const cards = elements.cardDeck.querySelectorAll('.business-card');
   if (cards.length > 0 && cards[index]) {
-    const deckWidth = elements.cardDeck.clientWidth;
-    // スクロールスナップ位置へスクロール
+    const card = cards[index];
+    const deckRect = elements.cardDeck.getBoundingClientRect();
+    const cardRect = card.getBoundingClientRect();
+    // カードの実際の幅・位置を測定し、scroll-snap-align:center と一致する位置を算出
+    // （固定幅を仮定した計算だと、max-width制限のあるカード幅やコンテナ幅とズレて隣のカードにスナップしてしまう）
+    const targetLeft = elements.cardDeck.scrollLeft
+      + (cardRect.left - deckRect.left)
+      - (deckRect.width - cardRect.width) / 2;
     elements.cardDeck.scrollTo({
-      left: index * (deckWidth + 20), // 20はgap
+      left: targetLeft,
       behavior: smooth ? 'smooth' : 'auto'
     });
     currentSwipeIndex = index;
@@ -950,11 +956,24 @@ let scrollTimeout;
 elements.cardDeck.addEventListener('scroll', () => {
   clearTimeout(scrollTimeout);
   scrollTimeout = setTimeout(() => {
-    const deckWidth = elements.cardDeck.clientWidth + 20; // gap分を含む
-    const scrollLeft = elements.cardDeck.scrollLeft;
-    const newIndex = Math.round(scrollLeft / deckWidth);
-    
-    if (newIndex !== currentSwipeIndex && newIndex >= 0 && newIndex < STATE.filteredCards.length) {
+    // 実際に画面中央に来ているカードをDOM位置から判定する
+    // （固定幅を仮定した割り算だと、max-width制限のあるカード幅とズレて隣のカードを指してしまう）
+    const cards = elements.cardDeck.querySelectorAll('.business-card');
+    if (cards.length === 0) return;
+    const deckRect = elements.cardDeck.getBoundingClientRect();
+    const deckCenter = deckRect.left + deckRect.width / 2;
+    let newIndex = currentSwipeIndex;
+    let bestDist = Infinity;
+    cards.forEach((card, i) => {
+      const rect = card.getBoundingClientRect();
+      const dist = Math.abs((rect.left + rect.width / 2) - deckCenter);
+      if (dist < bestDist) {
+        bestDist = dist;
+        newIndex = i;
+      }
+    });
+
+    if (newIndex !== currentSwipeIndex) {
       currentSwipeIndex = newIndex;
       updateIndicator();
       loadVisibleImages();
