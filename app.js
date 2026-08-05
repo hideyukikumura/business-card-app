@@ -12,6 +12,7 @@ let STATE = {
   selectedTag: 'all', // 現在選択されているフィルタータグ
   addedTags: [],      // 新規登録フォームで一時追加中のタグリスト
   editingCardId: null, // 編集中の名刺ID（null = 新規登録モード）
+  language: localStorage.getItem('language') || 'ja', // UI表示言語（'ja' or 'en'。名刺データ自体には影響しない）
   kassenMode: 'tag',  // 合戦モードのチーム分け基準（'tag' or 'initial'）
   tokenClient: null,  // Google OAuth Token Client
   imageCache: {},     // { fileId: blobUrl }
@@ -21,6 +22,283 @@ let STATE = {
 // Google API endpoint constants
 const DRIVE_API_BASE = 'https://www.googleapis.com/drive/v3';
 const DRIVE_UPLOAD_BASE = 'https://www.googleapis.com/upload/drive/v3';
+
+// -------------------------------------------------------------
+// I18N（UIの表示言語のみ切り替える。名刺データ自体は翻訳しない）
+// -------------------------------------------------------------
+const I18N = {
+  ja: {
+    pageTitle: '名刺管理 App',
+    btnLogin: 'Google アカウントでサインイン',
+    btnOpenSetup: '初期設定 (OAuth クライアントID)',
+
+    titleSync: '同期',
+    titleAdd: '新規登録',
+    titleKassen: '合戦モード',
+    titleSettings: '設定',
+    searchPlaceholder: '名前・アルファベットで検索...',
+    tagAll: 'すべて',
+    emptyNoCards: '名刺が登録されていません',
+    emptyAddFirst: '最初の一枚を登録する',
+    emptyNoMatch: '該当する名刺が見つかりません',
+    emptyAddNew: '新規名刺を登録する',
+    titleEditCard: '編集',
+    titleDeleteCard: '削除',
+    confirmDelete: 'この名刺を削除してもよろしいですか？（Googleドライブ内の画像ファイルも削除されます）',
+
+    addTitleNew: '新規名刺登録',
+    addTitleEdit: '名刺を編集',
+    photoAlt: '名刺プレビュー',
+    photoPlaceholder: '名刺を撮影または画像を選択',
+    btnCapture: '写真を撮る',
+    btnGallery: 'アルバムから選択',
+    labelName: '氏名 / 会社名',
+    placeholderName: '例：山田 太郎 / 株式会社サンプル',
+    labelAlphabet: '検索用アルファベット (半角英数)',
+    placeholderAlphabet: '例：Yamada Taro / Sample Inc',
+    alphabetPatternTitle: '半角英数字とスペースのみ入力可能です',
+    labelRegisteredMonth: '登録年月',
+    labelTags: 'タグ付け',
+    placeholderTagInput: 'タグを入力してEnterで追加',
+    btnAddTag: '追加',
+    labelExistingTags: '既存のタグから選択',
+    labelMemo: 'メモ',
+    placeholderMemo: '面談内容や特徴など、自由にメモを残せます',
+    submitNew: 'Google ドライブへ保存',
+    submitEdit: '変更を保存',
+
+    headingSettings: 'アプリ設定',
+    headingOAuth: 'Google API 認証設定',
+    oauthDesc: 'Google Driveへアクセスするため、ご自身の Google Cloud Console で作成したOAuthクライアントIDを入力してください。',
+    labelClientId: 'OAuth クライアントID',
+    btnSaveSettings: '設定を保存',
+    headingAccount: 'アカウント',
+    notSignedIn: '未サインイン',
+    btnLogout: 'ログアウト',
+    headingLanguage: '言語',
+    langJapanese: '日本語',
+    langEnglish: 'English',
+    headingAppInfo: 'アプリ情報',
+    infoVersion: 'バージョン',
+    infoStorage: 'ストレージ',
+    infoStorageValue: 'Google ドライブ (BusinessCardManagerApp フォルダ)',
+
+    headingKassen: '合戦モード',
+    modeTag: 'タグモード',
+    modeInitial: 'イニシャルモード',
+    mapEmpty: '名刺が登録されると大陸が生まれます',
+    btnStartKassen: '合戦開始',
+    btnSkipKassen: 'スキップ',
+    kassenOpening: '合戦開始…！',
+    kassenResultBadge: '🏆 勝利軍: {team}',
+    kassenMvpLabel: '本日のMVP',
+    kassenMvpTitle: 'この名刺を見る',
+    kassenHexTooltip: '{name}（{team}）',
+    kassenUnaffiliated: '無所属',
+    kassenUnknownInitial: '?',
+    narrationTemplates: [
+      '【{team}】{name}の活躍むなしく、惜しくも敗退…',
+      '【{team}】{name}、健闘及ばず脱落…',
+      '【{team}】{name}が奮戦するも、力及ばず敗退…',
+      '【{team}】ここで{team}が脱落。{name}、お疲れ様でした…'
+    ],
+
+    loadingDefault: '読み込み中...',
+    loadingSigningIn: 'Googleでサインイン中...',
+    loadingSyncing: 'Googleドライブと同期中...',
+    loadingImage: '画像を読み込み中...',
+    loadingDeleting: '名刺を削除中...',
+    loadingSavingNew: 'Googleドライブに保存中...',
+    loadingSavingEdit: '変更を保存中...',
+
+    toastSetupFirst: 'はじめに「初期設定」からOAuthクライアントIDを登録してください。',
+    toastAuthSuccess: 'Google認証に成功しました。',
+    toastAuthError: '認証エラー: {error}',
+    toastGoogleLibError: 'Google API ライブラリの初期化に失敗しました。時間をおいて再度お試しください。',
+    toastAuthClientInitError: '認証クライアントの初期化に失敗しました。クライアントIDが正しいか確認してください。',
+    toastLoggedOut: 'ログアウトしました',
+    toastSessionExpired: 'セッションの期限が切れました。再サインインしてください。',
+    toastUnauthorized: '認証エラーが発生しました。再ログインしてください。',
+    toastSyncComplete: '同期が完了しました',
+    toastSyncError: '同期中にエラーが発生しました',
+    toastImageRequired: '名刺の画像を撮影または選択してください',
+    toastRegistered: '名刺を登録しました',
+    toastUpdated: '名刺を更新しました',
+    toastRegisterError: '登録中にエラーが発生しました',
+    toastUpdateError: '更新中にエラーが発生しました',
+    toastDeleted: '名刺を削除しました',
+    toastDeleteError: '削除中にエラーが発生しました',
+    toastClientIdRequired: 'クライアントIDを入力してください',
+    toastSettingsSaved: '設定を保存しました',
+    toastNoCardsForKassen: '名刺が登録されていません',
+    toastCardNotFound: '名刺が見つかりませんでした',
+    userNoName: 'ユーザー名なし'
+  },
+  en: {
+    pageTitle: 'Business Card Manager',
+    btnLogin: 'Sign in with Google',
+    btnOpenSetup: 'Initial Setup (OAuth Client ID)',
+
+    titleSync: 'Sync',
+    titleAdd: 'Add Card',
+    titleKassen: 'Showdown Mode',
+    titleSettings: 'Settings',
+    searchPlaceholder: 'Search by name or alphabet...',
+    tagAll: 'All',
+    emptyNoCards: 'No business cards yet',
+    emptyAddFirst: 'Add your first card',
+    emptyNoMatch: 'No matching cards found',
+    emptyAddNew: 'Add a new card',
+    titleEditCard: 'Edit',
+    titleDeleteCard: 'Delete',
+    confirmDelete: 'Delete this business card? The image file in Google Drive will also be deleted.',
+
+    addTitleNew: 'Add Business Card',
+    addTitleEdit: 'Edit Business Card',
+    photoAlt: 'Card preview',
+    photoPlaceholder: 'Take or choose a photo of the card',
+    btnCapture: 'Take Photo',
+    btnGallery: 'Choose from Album',
+    labelName: 'Name / Company',
+    placeholderName: 'e.g. Taro Yamada / Sample Inc.',
+    labelAlphabet: 'Alphabet for search (letters/numbers only)',
+    placeholderAlphabet: 'e.g. Yamada Taro / Sample Inc',
+    alphabetPatternTitle: 'Only letters, numbers, and spaces are allowed',
+    labelRegisteredMonth: 'Registration Month',
+    labelTags: 'Tags',
+    placeholderTagInput: 'Type a tag and press Enter',
+    btnAddTag: 'Add',
+    labelExistingTags: 'Choose from existing tags',
+    labelMemo: 'Memo',
+    placeholderMemo: 'Notes, meeting details, anything you want to remember',
+    submitNew: 'Save to Google Drive',
+    submitEdit: 'Save Changes',
+
+    headingSettings: 'Settings',
+    headingOAuth: 'Google API Authentication',
+    oauthDesc: 'To access Google Drive, enter the OAuth Client ID you created in your own Google Cloud Console.',
+    labelClientId: 'OAuth Client ID',
+    btnSaveSettings: 'Save Settings',
+    headingAccount: 'Account',
+    notSignedIn: 'Not signed in',
+    btnLogout: 'Sign Out',
+    headingLanguage: 'Language',
+    langJapanese: '日本語',
+    langEnglish: 'English',
+    headingAppInfo: 'App Info',
+    infoVersion: 'Version',
+    infoStorage: 'Storage',
+    infoStorageValue: 'Google Drive (BusinessCardManagerApp folder)',
+
+    headingKassen: 'Showdown Mode',
+    modeTag: 'Tag Mode',
+    modeInitial: 'Initial Mode',
+    mapEmpty: 'A continent will form as you add cards',
+    btnStartKassen: 'Start Showdown',
+    btnSkipKassen: 'Skip',
+    kassenOpening: 'The showdown begins...!',
+    kassenResultBadge: '🏆 Winning Army: {team}',
+    kassenMvpLabel: "Today's MVP",
+    kassenMvpTitle: 'View this card',
+    kassenHexTooltip: '{name} ({team})',
+    kassenUnaffiliated: 'Unaffiliated',
+    kassenUnknownInitial: '?',
+    narrationTemplates: [
+      "[{team}] Despite {name}'s efforts, narrowly defeated...",
+      '[{team}] {name} fought hard but was eliminated...',
+      '[{team}] {name} put up a struggle, but it was not enough...',
+      '[{team}] {team} has fallen here. Well fought, {name}...'
+    ],
+
+    loadingDefault: 'Loading...',
+    loadingSigningIn: 'Signing in with Google...',
+    loadingSyncing: 'Syncing with Google Drive...',
+    loadingImage: 'Loading image...',
+    loadingDeleting: 'Deleting card...',
+    loadingSavingNew: 'Saving to Google Drive...',
+    loadingSavingEdit: 'Saving changes...',
+
+    toastSetupFirst: 'First, register your OAuth Client ID from "Initial Setup".',
+    toastAuthSuccess: 'Signed in with Google successfully.',
+    toastAuthError: 'Authentication error: {error}',
+    toastGoogleLibError: 'Failed to initialize the Google API library. Please try again later.',
+    toastAuthClientInitError: 'Failed to initialize the auth client. Please check that the Client ID is correct.',
+    toastLoggedOut: 'Signed out',
+    toastSessionExpired: 'Your session has expired. Please sign in again.',
+    toastUnauthorized: 'An authentication error occurred. Please sign in again.',
+    toastSyncComplete: 'Sync complete',
+    toastSyncError: 'An error occurred while syncing',
+    toastImageRequired: 'Please take or choose a photo of the business card',
+    toastRegistered: 'Business card saved',
+    toastUpdated: 'Business card updated',
+    toastRegisterError: 'An error occurred while saving',
+    toastUpdateError: 'An error occurred while updating',
+    toastDeleted: 'Business card deleted',
+    toastDeleteError: 'An error occurred while deleting',
+    toastClientIdRequired: 'Please enter a Client ID',
+    toastSettingsSaved: 'Settings saved',
+    toastNoCardsForKassen: 'No business cards are registered',
+    toastCardNotFound: 'Business card not found',
+    userNoName: 'No name'
+  }
+};
+
+// 翻訳キーを現在のUI言語の文字列に変換する。{param}形式のプレースホルダーは置換される。
+function t(key, params) {
+  const lang = (I18N[STATE.language]) ? STATE.language : 'ja';
+  let str = I18N[lang][key];
+  if (str === undefined) str = I18N.ja[key];
+  if (str === undefined) return key;
+
+  if (params) {
+    Object.keys(params).forEach(p => {
+      str = str.replace(new RegExp(`\\{${p}\\}`, 'g'), params[p]);
+    });
+  }
+  return str;
+}
+
+// UI表示言語を切り替える。名刺データ（氏名・メモ等の入力内容）は一切変更しない。
+function applyLanguage(lang) {
+  if (!I18N[lang]) lang = 'ja';
+  STATE.language = lang;
+  localStorage.setItem('language', lang);
+  document.documentElement.lang = lang;
+  document.title = t('pageTitle');
+
+  document.querySelectorAll('[data-i18n]').forEach(el => {
+    el.textContent = t(el.dataset.i18n);
+  });
+  document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+    el.placeholder = t(el.dataset.i18nPlaceholder);
+  });
+  document.querySelectorAll('[data-i18n-title]').forEach(el => {
+    el.title = t(el.dataset.i18nTitle);
+  });
+  document.querySelectorAll('[data-i18n-alt]').forEach(el => {
+    el.alt = t(el.dataset.i18nAlt);
+  });
+
+  document.querySelectorAll('.lang-switch-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.lang === lang);
+  });
+
+  // サインイン中は実際のユーザー名を上書きしないよう、未サインイン時のみ翻訳する
+  if (!STATE.user) {
+    elements.userName.textContent = t('notSignedIn');
+  }
+
+  // 動的に生成される画面（一覧・タグフィルター・追加/編集画面）を現在の言語で再描画
+  renderApp();
+  elements.addScreenTitle.textContent = STATE.editingCardId ? t('addTitleEdit') : t('addTitleNew');
+  elements.btnSubmitText.textContent = STATE.editingCardId ? t('submitEdit') : t('submitNew');
+  renderAddedTags();
+
+  // 合戦モード表示中のみ地図を再描画（不要なDrive書き込みを避けるため）
+  if (document.getElementById('screen-kassen').classList.contains('active')) {
+    renderKassenMap();
+  }
+}
 
 // -------------------------------------------------------------
 // DOM ELEMENTS
@@ -58,6 +336,7 @@ const elements = {
   btnGallery: document.getElementById('btn-gallery'),
   inputName: document.getElementById('input-name'),
   inputAlphabet: document.getElementById('input-alphabet'),
+  inputRegisteredMonth: document.getElementById('input-registered-month'),
   inputMemo: document.getElementById('input-memo'),
   inputTag: document.getElementById('input-tag'),
   btnAddTag: document.getElementById('btn-add-tag'),
@@ -76,6 +355,7 @@ const elements = {
   userEmail: document.getElementById('user-email'),
   userAvatar: document.getElementById('user-avatar'),
   btnLogout: document.getElementById('btn-logout'),
+  langSwitch: document.getElementById('lang-switch'),
   // Kassen Mode Screen（合戦モード）
   btnKassen: document.getElementById('btn-kassen'),
   btnCloseKassen: document.getElementById('btn-close-kassen'),
@@ -107,6 +387,9 @@ window.addEventListener('DOMContentLoaded', () => {
 function initApp() {
   // SVGアイコンをLucideでレンダリング
   lucide.createIcons();
+
+  // 保存済みのUI言語を適用
+  applyLanguage(STATE.language);
 
   // イベントリスナーの登録
   registerEventListeners();
@@ -151,7 +434,7 @@ function showScreen(screenId) {
 // -------------------------------------------------------------
 // TOAST & LOADING OVERLAYS
 // -------------------------------------------------------------
-function showLoading(text = '読み込み中...') {
+function showLoading(text = t('loadingDefault')) {
   elements.loadingText.textContent = text;
   elements.loadingOverlay.classList.remove('hidden');
 }
@@ -187,17 +470,17 @@ function initGoogleAuth() {
       callback: (tokenResponse) => {
         if (tokenResponse.error) {
           hideLoading();
-          showToast(`認証エラー: ${tokenResponse.error}`);
+          showToast(t('toastAuthError', { error: tokenResponse.error }));
           return;
         }
-        
+
         STATE.accessToken = tokenResponse.access_token;
         STATE.tokenExpiry = Date.now() + (tokenResponse.expires_in * 1000);
-        
+
         localStorage.setItem('accessToken', STATE.accessToken);
         localStorage.setItem('tokenExpiry', STATE.tokenExpiry.toString());
 
-        showToast('Google認証に成功しました。');
+        showToast(t('toastAuthSuccess'));
         fetchUserProfile();
         showScreen('screen-main');
         syncWithDrive();
@@ -205,18 +488,18 @@ function initGoogleAuth() {
     });
   } catch (error) {
     console.error('Google Auth Init Error:', error);
-    showToast('Google API ライブラリの初期化に失敗しました。時間をおいて再度お試しください。');
+    showToast(t('toastGoogleLibError'));
   }
 }
 
 function handleLogin() {
   if (!STATE.clientId) {
-    showToast('はじめに「初期設定」からOAuthクライアントIDを登録してください。');
+    showToast(t('toastSetupFirst'));
     showScreen('screen-settings');
     return;
   }
 
-  showLoading('Googleでサインイン中...');
+  showLoading(t('loadingSigningIn'));
   if (!STATE.tokenClient) {
     initGoogleAuth();
   }
@@ -226,7 +509,7 @@ function handleLogin() {
     STATE.tokenClient.requestAccessToken({ prompt: 'consent' });
   } else {
     hideLoading();
-    showToast('認証クライアントの初期化に失敗しました。クライアントIDが正しいか確認してください。');
+    showToast(t('toastAuthClientInitError'));
   }
 }
 
@@ -241,7 +524,7 @@ function logout() {
   localStorage.removeItem('folderId');
   localStorage.removeItem('metadataFileId');
   
-  showToast('ログアウトしました');
+  showToast(t('toastLoggedOut'));
   showScreen('screen-auth');
 }
 
@@ -254,7 +537,7 @@ async function fetchUserProfile() {
     if (res.ok) {
       const data = await res.json();
       STATE.user = data;
-      elements.userName.textContent = data.name || 'ユーザー名なし';
+      elements.userName.textContent = data.name || t('userNoName');
       elements.userEmail.textContent = data.email || '';
       if (data.picture) {
         elements.userAvatar.innerHTML = `<img src="${data.picture}" alt="avatar" style="width:100%; height:100%; border-radius:50%;">`;
@@ -271,7 +554,7 @@ async function fetchUserProfile() {
 async function driveFetch(url, options = {}) {
   // トークンの有効期限チェック
   if (Date.now() >= STATE.tokenExpiry) {
-    showToast('セッションの期限が切れました。再サインインしてください。');
+    showToast(t('toastSessionExpired'));
     logout();
     throw new Error('Token expired');
   }
@@ -282,7 +565,7 @@ async function driveFetch(url, options = {}) {
   const response = await fetch(url, options);
 
   if (response.status === 401) {
-    showToast('認証エラーが発生しました。再ログインしてください。');
+    showToast(t('toastUnauthorized'));
     logout();
     throw new Error('Unauthorized');
   }
@@ -292,7 +575,7 @@ async function driveFetch(url, options = {}) {
 
 // ドライブのアプリフォルダとメタデータの同期
 async function syncWithDrive() {
-  showLoading('Googleドライブと同期中...');
+  showLoading(t('loadingSyncing'));
   try {
     // ユーザー情報の取得（未取得の場合）
     if (!STATE.user) {
@@ -315,12 +598,12 @@ async function syncWithDrive() {
     await loadMetadata();
     
     hideLoading();
-    showToast('同期が完了しました');
+    showToast(t('toastSyncComplete'));
     renderApp();
   } catch (error) {
     console.error('Sync Error:', error);
     hideLoading();
-    showToast('同期中にエラーが発生しました');
+    showToast(t('toastSyncError'));
   }
 }
 
@@ -530,7 +813,7 @@ function renderFilters() {
   const allBtn = document.createElement('button');
   allBtn.className = `tag-filter-item ${STATE.selectedTag === 'all' ? 'active' : ''}`;
   allBtn.dataset.tag = 'all';
-  allBtn.textContent = 'すべて';
+  allBtn.textContent = t('tagAll');
   elements.tagFilters.appendChild(allBtn);
 
   // タグごとのフィルターを追加
@@ -553,10 +836,10 @@ function renderCards() {
     emptyState.className = 'empty-state';
     emptyState.innerHTML = `
       <i data-lucide="inbox" style="width:48px; height:48px; color:var(--text-muted); margin-bottom:12px;"></i>
-      <p style="margin-bottom:16px;">該当する名刺が見つかりません</p>
+      <p style="margin-bottom:16px;">${t('emptyNoMatch')}</p>
       <button id="btn-empty-add-action" class="btn btn-primary">
         <i data-lucide="plus"></i>
-        <span>新規名刺を登録する</span>
+        <span>${t('emptyAddNew')}</span>
       </button>
     `;
     container.appendChild(emptyState);
@@ -584,6 +867,7 @@ function renderCards() {
     cardEl.dataset.index = index;
 
     // 初期状態はローディング風プレースホルダー
+    const registeredLabel = formatRegisteredMonth(getCardRegisteredMonth(card));
     cardEl.innerHTML = `
       <div class="card-bg-blur" id="bg-blur-${index}"></div>
       <div class="card-image-wrapper">
@@ -595,18 +879,19 @@ function renderCards() {
           <div>
             <h3>${escapeHTML(card.name)}</h3>
             <div class="alphabet">${escapeHTML(card.alphabet)}</div>
+            ${registeredLabel ? `<div class="card-registered-month"><i data-lucide="calendar"></i>${escapeHTML(registeredLabel)}</div>` : ''}
           </div>
           <div class="card-actions">
-            <button class="btn-icon btn-edit-card" data-id="${card.id}" style="border:none; background:transparent; color:var(--text-muted);" title="編集">
+            <button class="btn-icon btn-edit-card" data-id="${card.id}" style="border:none; background:transparent; color:var(--text-muted);" title="${t('titleEditCard')}">
               <i data-lucide="pencil" style="width:18px; height:18px;"></i>
             </button>
-            <button class="btn-icon btn-delete-card" data-id="${card.id}" style="border:none; background:transparent; color:var(--text-muted);" title="削除">
+            <button class="btn-icon btn-delete-card" data-id="${card.id}" style="border:none; background:transparent; color:var(--text-muted);" title="${t('titleDeleteCard')}">
               <i data-lucide="trash-2" style="width:18px; height:18px;"></i>
             </button>
           </div>
         </div>
         <div class="card-tags">
-          ${card.tags ? card.tags.map(t => `<span class="card-tag">${escapeHTML(t)}</span>`).join('') : ''}
+          ${card.tags ? card.tags.map(tag => `<span class="card-tag">${escapeHTML(tag)}</span>`).join('') : ''}
         </div>
         ${card.memo ? `<p class="card-memo">${escapeHTML(card.memo)}</p>` : ''}
       </div>
@@ -628,7 +913,7 @@ function renderCards() {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       const id = btn.dataset.id;
-      if (confirm('この名刺を削除してもよろしいですか？（Googleドライブ内の画像ファイルも削除されます）')) {
+      if (confirm(t('confirmDelete'))) {
         deleteCard(id);
       }
     });
@@ -711,7 +996,7 @@ async function loadVisibleImages() {
 
 // 名刺削除処理
 async function deleteCard(cardId) {
-  showLoading('名刺を削除中...');
+  showLoading(t('loadingDeleting'));
   try {
     const cardIndex = STATE.cards.findIndex(c => c.id === cardId);
     if (cardIndex === -1) return;
@@ -735,12 +1020,12 @@ async function deleteCard(cardId) {
     await saveMetadata();
     
     hideLoading();
-    showToast('名刺を削除しました');
+    showToast(t('toastDeleted'));
     renderApp();
   } catch (error) {
     console.error('Delete Card Error:', error);
     hideLoading();
-    showToast('削除中にエラーが発生しました');
+    showToast(t('toastDeleteError'));
   }
 }
 
@@ -752,17 +1037,18 @@ async function openEditCard(cardId) {
   resetAddForm();
   STATE.editingCardId = cardId;
 
-  elements.addScreenTitle.textContent = '名刺を編集';
-  elements.btnSubmitText.textContent = '変更を保存';
+  elements.addScreenTitle.textContent = t('addTitleEdit');
+  elements.btnSubmitText.textContent = t('submitEdit');
 
   elements.inputName.value = card.name || '';
   elements.inputAlphabet.value = card.alphabet || '';
+  elements.inputRegisteredMonth.value = getCardRegisteredMonth(card);
   elements.inputMemo.value = card.memo || '';
   STATE.addedTags = card.tags ? [...card.tags] : [];
   renderAddedTags();
 
   if (card.imageId) {
-    showLoading('画像を読み込み中...');
+    showLoading(t('loadingImage'));
     const imageUrl = await fetchCardImage(card.imageId);
     hideLoading();
     if (imageUrl) {
@@ -879,15 +1165,15 @@ function registerEventListeners() {
   elements.btnSaveSettings.addEventListener('click', () => {
     const newId = elements.inputClientId.value.trim();
     if (!newId) {
-      showToast('クライアントIDを入力してください');
+      showToast(t('toastClientIdRequired'));
       return;
     }
-    
+
     const idChanged = STATE.clientId !== newId;
     STATE.clientId = newId;
     localStorage.setItem('clientId', STATE.clientId);
-    
-    showToast('設定を保存しました');
+
+    showToast(t('toastSettingsSaved'));
     
     if (idChanged) {
       initGoogleAuth();
@@ -899,6 +1185,13 @@ function registerEventListeners() {
   // 設定：閉じる
   elements.btnCloseSettings.addEventListener('click', () => {
     checkSession();
+  });
+
+  // 設定：言語切替
+  elements.langSwitch.addEventListener('click', (e) => {
+    const btn = e.target.closest('.lang-switch-btn');
+    if (!btn) return;
+    applyLanguage(btn.dataset.lang);
   });
 
   // アカウント：ログアウト
@@ -954,12 +1247,13 @@ function resetAddForm() {
   elements.photoPreview.src = '';
   elements.photoPreview.classList.add('hidden');
   elements.photoPlaceholder.classList.remove('hidden');
+  elements.inputRegisteredMonth.value = getCurrentYearMonth();
   STATE.addedTags = [];
   STATE.editingCardId = null;
   renderAddedTags();
 
-  elements.addScreenTitle.textContent = '新規名刺登録';
-  elements.btnSubmitText.textContent = 'Google ドライブへ保存';
+  elements.addScreenTitle.textContent = t('addTitleNew');
+  elements.btnSubmitText.textContent = t('submitNew');
 }
 
 function handleFileSelect(e) {
@@ -1051,15 +1345,16 @@ async function handleAddCardSubmit(e) {
 
   // 新規登録時のみ画像は必須（編集時は既存画像を維持できる）
   if (!isEditing && !file && !elements.photoPreview.src) {
-    showToast('名刺の画像を撮影または選択してください');
+    showToast(t('toastImageRequired'));
     return;
   }
 
-  showLoading(isEditing ? '変更を保存中...' : 'Googleドライブに保存中...');
+  showLoading(isEditing ? t('loadingSavingEdit') : t('loadingSavingNew'));
 
   try {
     const name = elements.inputName.value.trim();
     const alphabet = elements.inputAlphabet.value.trim();
+    const registeredMonth = elements.inputRegisteredMonth.value || getCurrentYearMonth();
     const memo = elements.inputMemo.value.trim();
     const tags = [...STATE.addedTags];
 
@@ -1085,27 +1380,17 @@ async function handleAddCardSubmit(e) {
         }
       }
 
-      // チーム（タグ／イニシャル）が変わった場合のみ合戦マップ上の陣地を再配置し、
-      // 変わっていなければ以前の位置をそのまま維持する
-      const nextTeamSource = { id: targetCard.id, tags, alphabet };
-      const prevKassenPos = targetCard.kassenPos || { tag: null, initial: null };
-      const kassenPos = {
-        tag: (prevKassenPos.tag && getKassenTeamKey(nextTeamSource, 'tag') === getKassenTeamKey(targetCard, 'tag'))
-          ? prevKassenPos.tag
-          : computeKassenCell(nextTeamSource, 'tag'),
-        initial: (prevKassenPos.initial && getKassenTeamKey(nextTeamSource, 'initial') === getKassenTeamKey(targetCard, 'initial'))
-          ? prevKassenPos.initial
-          : computeKassenCell(nextTeamSource, 'initial')
-      };
-
-      STATE.cards[cardIndex] = { ...targetCard, name, alphabet, memo, tags, imageId, kassenPos };
+      // 合戦マップの座標はここでは変更しない。既存の所属軍の座標はそのまま維持され、
+      // タグの追加・削除で所属軍が変わった分は、次に合戦モードを開いたときに
+      // ensureKassenPositions() が自動で座標の追加・削除を行う。
+      STATE.cards[cardIndex] = { ...targetCard, name, alphabet, registeredMonth, memo, tags, imageId };
 
       const saveSuccess = await saveMetadata();
       if (!saveSuccess) {
         throw new Error('Failed to update metadata.json');
       }
 
-      showToast('名刺を更新しました');
+      showToast(t('toastUpdated'));
     } else {
       let fileBlob = file;
       // ファイル選択でなくプレビューがある（例えば一部ブラウザで引き継がれた場合などの念のため）
@@ -1124,17 +1409,21 @@ async function handleAddCardSubmit(e) {
         id: cardId,
         name,
         alphabet,
+        registeredMonth,
         memo,
         tags,
         imageId: driveImageId,
         createdAt: new Date().toISOString(),
-        kassenPos: { tag: null, initial: null }
+        kassenPos: { tag: {}, initial: {} }
       };
-      // 合戦マップ上の陣地を確定（同タグ・同イニシャルの陣地に隣接するマスへ配置）
-      newCard.kassenPos = {
-        tag: computeKassenCell(newCard, 'tag'),
-        initial: computeKassenCell(newCard, 'initial')
-      };
+      // 合戦マップ上の陣地を確定（同タグ・同イニシャルの陣地に隣接するマスへ配置）。
+      // 持っているタグの数だけ、それぞれの陣地に別のマスとして配備される（上限なし）。
+      getKassenTeamKeys(newCard, 'tag').forEach(team => {
+        newCard.kassenPos.tag[team] = computeKassenCell(newCard, 'tag', team);
+      });
+      getKassenTeamKeys(newCard, 'initial').forEach(team => {
+        newCard.kassenPos.initial[team] = computeKassenCell(newCard, 'initial', team);
+      });
 
       STATE.cards.push(newCard);
       const saveSuccess = await saveMetadata();
@@ -1142,7 +1431,7 @@ async function handleAddCardSubmit(e) {
         throw new Error('Failed to update metadata.json');
       }
 
-      showToast('名刺を登録しました');
+      showToast(t('toastRegistered'));
     }
 
     resetAddForm();
@@ -1151,7 +1440,7 @@ async function handleAddCardSubmit(e) {
 
   } catch (error) {
     console.error('Card Save Error:', error);
-    showToast(isEditing ? '更新中にエラーが発生しました' : '登録中にエラーが発生しました');
+    showToast(isEditing ? t('toastUpdateError') : t('toastRegisterError'));
   } finally {
     hideLoading();
   }
@@ -1166,7 +1455,10 @@ const KASSEN_PALETTE = [
   '#4ade80', '#38bdf8'
 ];
 const KASSEN_NEUTRAL_COLOR = '#64748b';
-const KASSEN_NEUTRAL_KEYS = ['無所属', '?'];
+// 「無所属」「イニシャル不明」を表す内部識別子（言語に依存しない固定値。表示時のみ翻訳する）
+const KASSEN_UNAFFILIATED_KEY = '__unaffiliated__';
+const KASSEN_UNKNOWN_INITIAL_KEY = '?';
+const KASSEN_NEUTRAL_KEYS = [KASSEN_UNAFFILIATED_KEY, KASSEN_UNKNOWN_INITIAL_KEY];
 
 // axial座標の6方向（フラットトップ六角形）
 const HEX_DIRECTIONS = [
@@ -1189,26 +1481,24 @@ function openKassenMode() {
   showScreen('screen-kassen');
 }
 
-// カードが所属する軍のキー一覧を返す。タグモードでタグを2つ以上持つ場合は、
-// 先頭2つのタグそれぞれの軍に所属する（＝2つの軍を掛け持ちする）。
+// カードが所属する軍のキー一覧を返す。タグモードでは、持っている全てのタグそれぞれの軍に所属する
+// （上限なし。タグを5つ持っていれば5つの軍を掛け持ちする）。
 // イニシャルモードはアルファベットが1つしかないため常に1軍のみ。
 function getKassenTeamKeys(card, mode) {
   if (mode === 'tag') {
-    if (!card.tags || card.tags.length === 0) return ['無所属'];
-    return card.tags.slice(0, 2);
+    if (!card.tags || card.tags.length === 0) return [KASSEN_UNAFFILIATED_KEY];
+    return card.tags;
   }
   const initial = (card.alphabet || '').trim().charAt(0).toUpperCase();
-  return [initial || '?'];
+  return [initial || KASSEN_UNKNOWN_INITIAL_KEY];
 }
 
-// カード1枚の「主」チームキー（陣地の色・地図上の配置に使用。所属は1つに固定する必要があるため先頭のみ）
-function getKassenTeamKey(card, mode) {
-  return getKassenTeamKeys(card, mode)[0];
-}
-
-// カードが指定した軍に所属しているか（掛け持ち軍も含めて判定）
-function kassenCardBelongsToTeam(card, team, mode) {
-  return getKassenTeamKeys(card, mode).includes(team);
+// チームキーの表示用ラベルを返す（無所属/不明マーカーのみ現在のUI言語に翻訳し、
+// 実際のタグ・イニシャルはユーザーデータなのでそのまま表示する）
+function getKassenTeamDisplayLabel(key) {
+  if (key === KASSEN_UNAFFILIATED_KEY) return t('kassenUnaffiliated');
+  if (key === KASSEN_UNKNOWN_INITIAL_KEY) return t('kassenUnknownInitial');
+  return key;
 }
 
 // 登録名刺をチームごとにグルーピング（Map<チーム名, カード配列>）。
@@ -1327,29 +1617,34 @@ function pickIslandSeed(allCells) {
 // 新しいチームが誕生したときに、本土にくっつけるか、離れた新しい島として配置するかの確率
 const KASSEN_NEW_TEAM_ISLAND_CHANCE = 0.15;
 
-// 名刺1枚を配置するセルを決定する。
-// 同じチームの名刺が既に地図上にあれば、その隣接マスを優先して選び陣地が繋がって広がるようにする。
+// 名刺の「1つの配備」（＝1つの軍への所属）を配置するセルを決定する。
+// 同じチームの配備が既に地図上にあれば、その隣接マスを優先して選び陣地が繋がって広がるようにする。
 // チームが地図上にまだ無ければ、一定確率で大陸の縁にくっつけ、それ以外は少し離れた新しい島として配置する
 // （世界地図のように複数の大陸・離島がある見た目にするため）。地図が完全に空なら原点(0,0)を返す。
-function computeKassenCell(card, mode) {
+function computeKassenCell(card, mode, team) {
   const occupied = new Set();
   const teammateCells = [];
   const sameTeamSet = new Set();
   const allCells = [];
-  const team = getKassenTeamKey(card, mode);
 
   STATE.cards.forEach(other => {
-    if (other.id === card.id) return;
-    const pos = other.kassenPos && other.kassenPos[mode];
-    if (!pos) return;
+    const otherPosMap = other.kassenPos && other.kassenPos[mode];
+    if (!otherPosMap) return;
 
-    const key = kassenCellKey(pos.q, pos.r);
-    occupied.add(key);
-    allCells.push(pos);
-    if (getKassenTeamKey(other, mode) === team) {
-      teammateCells.push(pos);
-      sameTeamSet.add(key);
-    }
+    Object.keys(otherPosMap).forEach(otherTeam => {
+      if (other.id === card.id && otherTeam === team) return; // 計算中の軍への配備自身は除外
+
+      const pos = otherPosMap[otherTeam];
+      if (!pos) return;
+
+      const key = kassenCellKey(pos.q, pos.r);
+      occupied.add(key);
+      allCells.push(pos);
+      if (otherTeam === team) {
+        teammateCells.push(pos);
+        sameTeamSet.add(key);
+      }
+    });
   });
 
   if (teammateCells.length > 0) {
@@ -1364,16 +1659,44 @@ function computeKassenCell(card, mode) {
   return findNextFreeCell(occupied, allCells);
 }
 
-// まだ座標を持たない名刺（過去に登録された古いデータ等）に、登録順で座標を割り当てる。
-// 1件ずつ順番に確定させることで、既に座標を持つ名刺の位置には一切影響しない。
+// 各名刺の座標データを、現在の所属軍（タグ／イニシャル）と一致させる。
+// - まだ座標を持たない軍（新しく追加されたタグ、過去データの初回表示など）には座標を割り当てる
+// - もう所属していない軍（削除されたタグ等）の座標は取り除く
+// - 既存の座標には一切手を触れない（安定して同じ場所に留まる）
+// 1件ずつ順番に確定させることで、既存の配備の位置には影響しない。
+// 旧バージョン（単一座標形式）のデータが残っていた場合は、ここで新形式に移行する。
 function ensureKassenPositions(mode) {
   let changed = false;
   STATE.cards.forEach(card => {
-    if (!card.kassenPos) card.kassenPos = { tag: null, initial: null };
-    if (!card.kassenPos[mode]) {
-      card.kassenPos[mode] = computeKassenCell(card, mode);
+    if (!card.kassenPos || typeof card.kassenPos !== 'object') {
+      card.kassenPos = { tag: {}, initial: {} };
       changed = true;
     }
+    ['tag', 'initial'].forEach(m => {
+      const val = card.kassenPos[m];
+      if (!val || typeof val !== 'object' || 'q' in val) {
+        card.kassenPos[m] = {}; // 旧形式（{q, r}の単一座標）からの移行
+        changed = true;
+      }
+    });
+
+    const currentTeams = getKassenTeamKeys(card, mode);
+    const currentTeamSet = new Set(currentTeams);
+    const posMap = card.kassenPos[mode];
+
+    Object.keys(posMap).forEach(team => {
+      if (!currentTeamSet.has(team)) {
+        delete posMap[team];
+        changed = true;
+      }
+    });
+
+    currentTeams.forEach(team => {
+      if (!posMap[team]) {
+        posMap[team] = computeKassenCell(card, mode, team);
+        changed = true;
+      }
+    });
   });
   return changed;
 }
@@ -1467,11 +1790,19 @@ function renderKassenMap() {
   const teamMap = buildKassenTeams(STATE.kassenMode);
   const teamKeys = [...teamMap.keys()].sort((a, b) => a.localeCompare(b, 'ja'));
 
-  const hexSize = 6;
-  const pixelCoords = cards.map(card => {
-    const pos = card.kassenPos[STATE.kassenMode];
-    return hexAxialToPixel(pos.q, pos.r, hexSize);
+  // 名刺ごとに、所属する軍の数だけヘックス（配備）を作る。
+  // タグモードで複数タグを持つ名刺は、タグの数だけ（上限なし）地図上に登場する。
+  const deployments = [];
+  cards.forEach(card => {
+    const posMap = card.kassenPos && card.kassenPos[STATE.kassenMode];
+    getKassenTeamKeys(card, STATE.kassenMode).forEach(team => {
+      const pos = posMap && posMap[team];
+      if (pos) deployments.push({ card, team, pos });
+    });
   });
+
+  const hexSize = 6;
+  const pixelCoords = deployments.map(d => hexAxialToPixel(d.pos.q, d.pos.r, hexSize));
 
   const xs = pixelCoords.map(p => p.x);
   const ys = pixelCoords.map(p => p.y);
@@ -1482,9 +1813,8 @@ function renderKassenMap() {
   const maxY = Math.max(...ys) + margin;
   svg.setAttribute('viewBox', `${minX.toFixed(2)} ${minY.toFixed(2)} ${(maxX - minX).toFixed(2)} ${(maxY - minY).toFixed(2)}`);
 
-  cards.forEach((card, i) => {
-    const team = getKassenTeamKey(card, STATE.kassenMode);
-    const color = getKassenTeamColor(teamKeys, team);
+  deployments.forEach((d, i) => {
+    const color = getKassenTeamColor(teamKeys, d.team);
     const { x, y } = pixelCoords[i];
 
     const poly = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
@@ -1492,11 +1822,11 @@ function renderKassenMap() {
     poly.setAttribute('fill', color);
     poly.setAttribute('fill-opacity', '0.85');
     poly.classList.add('kassen-hex');
-    poly.dataset.team = team;
-    poly.dataset.cardId = card.id;
+    poly.dataset.team = d.team;
+    poly.dataset.cardId = d.card.id;
 
     const title = document.createElementNS('http://www.w3.org/2000/svg', 'title');
-    title.textContent = `${card.name}（${team}）`;
+    title.textContent = t('kassenHexTooltip', { name: d.card.name, team: getKassenTeamDisplayLabel(d.team) });
     poly.appendChild(title);
 
     svg.appendChild(poly);
@@ -1512,20 +1842,13 @@ function renderKassenLegend(teamMap, teamKeys) {
     return `
       <div class="kassen-legend-item">
         <span class="kassen-legend-dot" style="background:${color}"></span>
-        <span class="kassen-legend-label">${escapeHTML(key)}</span>
+        <span class="kassen-legend-label">${escapeHTML(getKassenTeamDisplayLabel(key))}</span>
         <span class="kassen-legend-count">${count}</span>
       </div>
     `;
   }).join('');
 }
 
-// 敗退実況の言い回しバリエーション（{team}, {name} を置換して使用）
-const KASSEN_NARRATION_TEMPLATES = [
-  '【{team}】{name}の活躍むなしく、惜しくも敗退…',
-  '【{team}】{name}、健闘及ばず脱落…',
-  '【{team}】{name}が奮戦するも、力及ばず敗退…',
-  '【{team}】ここで{team}が脱落。{name}、お疲れ様でした…'
-];
 const KASSEN_NARRATION_STEP_MS = 1800;
 
 let kassenSkipRequested = false;
@@ -1553,7 +1876,7 @@ function setKassenControlsDisabled(disabled) {
 
 async function startKassen() {
   if (STATE.cards.length === 0) {
-    showToast('名刺が登録されていません');
+    showToast(t('toastNoCardsForKassen'));
     return;
   }
 
@@ -1567,7 +1890,6 @@ async function startKassen() {
 
   const teamMap = buildKassenTeams(STATE.kassenMode);
   const teamKeys = [...teamMap.keys()];
-  const cardById = new Map(STATE.cards.map(c => [c.id, c]));
 
   // シャッフルして脱落順を決定する（最後に残った1チームが勝者）
   for (let i = teamKeys.length - 1; i > 0; i--) {
@@ -1580,7 +1902,7 @@ async function startKassen() {
   kassenSkipRequested = false;
   setKassenControlsDisabled(true);
   elements.btnStartKassen.classList.add('hidden');
-  elements.kassenCommentaryText.textContent = '合戦開始…！';
+  elements.kassenCommentaryText.textContent = t('kassenOpening');
   elements.kassenCommentary.classList.remove('hidden');
 
   await kassenInterruptibleDelay(900);
@@ -1590,14 +1912,13 @@ async function startKassen() {
 
     const members = teamMap.get(team);
     const featured = members[Math.floor(Math.random() * members.length)];
-    const template = KASSEN_NARRATION_TEMPLATES[Math.floor(Math.random() * KASSEN_NARRATION_TEMPLATES.length)];
-    elements.kassenCommentaryText.textContent = template.replace(/\{team\}/g, team).replace(/\{name\}/g, featured.name);
+    const templates = t('narrationTemplates');
+    const template = templates[Math.floor(Math.random() * templates.length)];
+    const teamLabel = getKassenTeamDisplayLabel(team);
+    elements.kassenCommentaryText.textContent = template.replace(/\{team\}/g, teamLabel).replace(/\{name\}/g, featured.name);
 
     document.querySelectorAll('.kassen-hex').forEach(hex => {
-      const card = cardById.get(hex.dataset.cardId);
-      if (card && kassenCardBelongsToTeam(card, team, STATE.kassenMode)) {
-        hex.classList.add('kassen-hex-loser');
-      }
+      if (hex.dataset.team === team) hex.classList.add('kassen-hex-loser');
     });
 
     if (kassenSkipRequested) break;
@@ -1605,10 +1926,9 @@ async function startKassen() {
   }
 
   // スキップされた場合も含め、勝者以外は必ず敗退表示に揃える。
-  // 掛け持ち軍のカードは、地図上の色は主タグのままでも、勝利軍に所属していれば勝者表示になる。
+  // ヘックス＝配備（1つの所属）と1対1で対応しているため、そのヘックス自身の軍だけで判定すればよい。
   document.querySelectorAll('.kassen-hex').forEach(hex => {
-    const card = cardById.get(hex.dataset.cardId);
-    if (card && kassenCardBelongsToTeam(card, winningTeam, STATE.kassenMode)) {
+    if (hex.dataset.team === winningTeam) {
       hex.classList.add('kassen-hex-winner');
       hex.classList.remove('kassen-hex-loser');
     } else {
@@ -1633,13 +1953,13 @@ async function showKassenResult(team, mvp) {
 
   elements.kassenResult.innerHTML = `
     <div class="kassen-result-card glass-card">
-      <div class="kassen-result-badge">🏆 勝利軍: ${escapeHTML(team)}</div>
-      <button type="button" id="kassen-mvp-link" class="kassen-mvp kassen-mvp-clickable" title="この名刺を見る">
+      <div class="kassen-result-badge">${t('kassenResultBadge', { team: escapeHTML(getKassenTeamDisplayLabel(team)) })}</div>
+      <button type="button" id="kassen-mvp-link" class="kassen-mvp kassen-mvp-clickable" title="${t('kassenMvpTitle')}">
         <div class="kassen-mvp-image-wrapper">
           ${imageUrl ? `<img src="${imageUrl}" alt="${escapeHTML(mvp.name)}">` : '<i data-lucide="user"></i>'}
         </div>
         <div class="kassen-mvp-info">
-          <span class="kassen-mvp-label">本日のMVP</span>
+          <span class="kassen-mvp-label">${t('kassenMvpLabel')}</span>
           <h3>${escapeHTML(mvp.name)}</h3>
           <div class="alphabet">${escapeHTML(mvp.alphabet)}</div>
         </div>
@@ -1669,13 +1989,45 @@ function goToCardFromKassen(cardId) {
   if (index !== -1) {
     scrollToCard(index, false);
   } else {
-    showToast('名刺が見つかりませんでした');
+    showToast(t('toastCardNotFound'));
   }
 }
 
 // -------------------------------------------------------------
 // HELPERS
 // -------------------------------------------------------------
+
+// 表示言語に関わらず常に同じ形式（例: "Aug. 2026"）で登録年月を表示するための固定表記
+const REGISTERED_MONTH_ABBR = [
+  'Jan.', 'Feb.', 'Mar.', 'Apr.', 'May', 'Jun.',
+  'Jul.', 'Aug.', 'Sep.', 'Oct.', 'Nov.', 'Dec.'
+];
+
+// "YYYY-MM" -> "Aug. 2026"（日本語UI・英語UI共通の固定フォーマット）
+function formatRegisteredMonth(yyyyMm) {
+  if (!yyyyMm) return '';
+  const [year, month] = yyyyMm.split('-').map(Number);
+  if (!year || !month || month < 1 || month > 12) return '';
+  return `${REGISTERED_MONTH_ABBR[month - 1]} ${year}`;
+}
+
+function getCurrentYearMonth() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function deriveYearMonthFromISO(isoString) {
+  if (!isoString) return '';
+  const d = new Date(isoString);
+  if (isNaN(d.getTime())) return '';
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+// 明示的に登録年月が保存されていない古いカードは、登録日時(createdAt)から補って表示・編集できるようにする
+function getCardRegisteredMonth(card) {
+  return card.registeredMonth || deriveYearMonthFromISO(card.createdAt);
+}
+
 function escapeHTML(str) {
   if (!str) return '';
   return str.replace(/[&<>'"]/g, 
