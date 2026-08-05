@@ -81,7 +81,9 @@ const elements = {
   btnCloseKassen: document.getElementById('btn-close-kassen'),
   kassenModeSwitch: document.getElementById('kassen-mode-switch'),
   kassenMap: document.getElementById('kassen-map'),
+  kassenMapWrapper: document.querySelector('.kassen-map-wrapper'),
   kassenEmptyState: document.getElementById('kassen-empty-state'),
+  kassenHexPopup: document.getElementById('kassen-hex-popup'),
   kassenLegend: document.getElementById('kassen-legend'),
   btnStartKassen: document.getElementById('btn-start-kassen'),
   kassenCommentary: document.getElementById('kassen-commentary'),
@@ -923,6 +925,20 @@ function registerEventListeners() {
     renderKassenMap();
   });
 
+  // 合戦モード：ヘックスをタップすると、その名刺の名前をタップ位置の少し上にポップアップ表示
+  elements.kassenMap.addEventListener('click', (e) => {
+    const hex = e.target.closest('.kassen-hex');
+    if (!hex) return;
+
+    const card = STATE.cards.find(c => c.id === hex.dataset.cardId);
+    if (!card) return;
+
+    const wrapperRect = elements.kassenMapWrapper.getBoundingClientRect();
+    const x = e.clientX - wrapperRect.left;
+    const y = e.clientY - wrapperRect.top;
+    showKassenHexPopup(card.name, x, y);
+  });
+
   // 合戦モード：合戦開始
   elements.btnStartKassen.addEventListener('click', startKassen);
 
@@ -1173,22 +1189,37 @@ function openKassenMode() {
   showScreen('screen-kassen');
 }
 
-// カード1枚が所属するチームのキーを、選択中のモードに応じて算出
-function getKassenTeamKey(card, mode) {
+// カードが所属する軍のキー一覧を返す。タグモードでタグを2つ以上持つ場合は、
+// 先頭2つのタグそれぞれの軍に所属する（＝2つの軍を掛け持ちする）。
+// イニシャルモードはアルファベットが1つしかないため常に1軍のみ。
+function getKassenTeamKeys(card, mode) {
   if (mode === 'tag') {
-    return (card.tags && card.tags.length > 0) ? card.tags[0] : '無所属';
+    if (!card.tags || card.tags.length === 0) return ['無所属'];
+    return card.tags.slice(0, 2);
   }
   const initial = (card.alphabet || '').trim().charAt(0).toUpperCase();
-  return initial || '?';
+  return [initial || '?'];
 }
 
-// 登録名刺をチームごとにグルーピング（Map<チーム名, カード配列>）
+// カード1枚の「主」チームキー（陣地の色・地図上の配置に使用。所属は1つに固定する必要があるため先頭のみ）
+function getKassenTeamKey(card, mode) {
+  return getKassenTeamKeys(card, mode)[0];
+}
+
+// カードが指定した軍に所属しているか（掛け持ち軍も含めて判定）
+function kassenCardBelongsToTeam(card, team, mode) {
+  return getKassenTeamKeys(card, mode).includes(team);
+}
+
+// 登録名刺をチームごとにグルーピング（Map<チーム名, カード配列>）。
+// 複数タグを持つカードは、所属する全ての軍の配列に重複して含まれる。
 function buildKassenTeams(mode) {
   const teamMap = new Map();
   STATE.cards.forEach(card => {
-    const key = getKassenTeamKey(card, mode);
-    if (!teamMap.has(key)) teamMap.set(key, []);
-    teamMap.get(key).push(card);
+    getKassenTeamKeys(card, mode).forEach(key => {
+      if (!teamMap.has(key)) teamMap.set(key, []);
+      teamMap.get(key).push(card);
+    });
   });
   return teamMap;
 }
@@ -1364,9 +1395,59 @@ function hexPolygonPoints(cx, cy, size) {
   return points.join(' ');
 }
 
+let kassenPopupTimeout = null;
+
+// タップ位置の少し上に名前ポップアップを表示する。マップ外へはみ出さないよう位置を補正する。
+function showKassenHexPopup(name, x, y) {
+  const popup = elements.kassenHexPopup;
+  const wrapperRect = elements.kassenMapWrapper.getBoundingClientRect();
+
+  popup.textContent = name;
+  popup.classList.remove('hidden');
+
+  const offset = 14;
+  popup.style.transform = 'translate(-50%, -100%)';
+  popup.style.left = `${x}px`;
+  popup.style.top = `${y - offset}px`;
+
+  requestAnimationFrame(() => {
+    const popupRect = popup.getBoundingClientRect();
+    const margin = 6;
+    let clampedX = x;
+    let clampedY = y - offset;
+    let translateY = '-100%';
+
+    const halfWidth = popupRect.width / 2;
+    if (clampedX - halfWidth < margin) clampedX = halfWidth + margin;
+    if (clampedX + halfWidth > wrapperRect.width - margin) clampedX = wrapperRect.width - halfWidth - margin;
+
+    // 上に十分な余白が無い場合は、タップ位置のすぐ下に表示する
+    if (clampedY - popupRect.height < margin) {
+      clampedY = y + offset;
+      translateY = '0';
+    }
+
+    popup.style.transform = `translate(-50%, ${translateY})`;
+    popup.style.left = `${clampedX}px`;
+    popup.style.top = `${clampedY}px`;
+    popup.classList.add('visible');
+  });
+
+  clearTimeout(kassenPopupTimeout);
+  kassenPopupTimeout = setTimeout(() => {
+    popup.classList.remove('visible');
+  }, 1800);
+}
+
+function hideKassenHexPopup() {
+  clearTimeout(kassenPopupTimeout);
+  elements.kassenHexPopup.classList.remove('visible');
+}
+
 function renderKassenMap() {
   const svg = elements.kassenMap;
   svg.innerHTML = '';
+  hideKassenHexPopup();
 
   const cards = STATE.cards;
   if (cards.length === 0) {
@@ -1440,10 +1521,10 @@ function renderKassenLegend(teamMap, teamKeys) {
 
 // 敗退実況の言い回しバリエーション（{team}, {name} を置換して使用）
 const KASSEN_NARRATION_TEMPLATES = [
-  '【{team}】{name}さんの活躍むなしく、惜しくも敗退…',
-  '【{team}】{name}さん、健闘及ばず脱落…',
-  '【{team}】{name}さんが奮戦するも、力及ばず敗退…',
-  '【{team}】ここで{team}が脱落。{name}さん、お疲れ様でした…'
+  '【{team}】{name}の活躍むなしく、惜しくも敗退…',
+  '【{team}】{name}、健闘及ばず脱落…',
+  '【{team}】{name}が奮戦するも、力及ばず敗退…',
+  '【{team}】ここで{team}が脱落。{name}、お疲れ様でした…'
 ];
 const KASSEN_NARRATION_STEP_MS = 1800;
 
@@ -1482,9 +1563,11 @@ async function startKassen() {
   });
   elements.kassenResult.innerHTML = '';
   elements.kassenResult.classList.add('hidden');
+  hideKassenHexPopup();
 
   const teamMap = buildKassenTeams(STATE.kassenMode);
   const teamKeys = [...teamMap.keys()];
+  const cardById = new Map(STATE.cards.map(c => [c.id, c]));
 
   // シャッフルして脱落順を決定する（最後に残った1チームが勝者）
   for (let i = teamKeys.length - 1; i > 0; i--) {
@@ -1511,16 +1594,21 @@ async function startKassen() {
     elements.kassenCommentaryText.textContent = template.replace(/\{team\}/g, team).replace(/\{name\}/g, featured.name);
 
     document.querySelectorAll('.kassen-hex').forEach(hex => {
-      if (hex.dataset.team === team) hex.classList.add('kassen-hex-loser');
+      const card = cardById.get(hex.dataset.cardId);
+      if (card && kassenCardBelongsToTeam(card, team, STATE.kassenMode)) {
+        hex.classList.add('kassen-hex-loser');
+      }
     });
 
     if (kassenSkipRequested) break;
     await kassenInterruptibleDelay(KASSEN_NARRATION_STEP_MS);
   }
 
-  // スキップされた場合も含め、勝者以外は必ず敗退表示に揃える
+  // スキップされた場合も含め、勝者以外は必ず敗退表示に揃える。
+  // 掛け持ち軍のカードは、地図上の色は主タグのままでも、勝利軍に所属していれば勝者表示になる。
   document.querySelectorAll('.kassen-hex').forEach(hex => {
-    if (hex.dataset.team === winningTeam) {
+    const card = cardById.get(hex.dataset.cardId);
+    if (card && kassenCardBelongsToTeam(card, winningTeam, STATE.kassenMode)) {
       hex.classList.add('kassen-hex-winner');
       hex.classList.remove('kassen-hex-loser');
     } else {
