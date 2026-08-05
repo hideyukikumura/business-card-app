@@ -12,6 +12,7 @@ let STATE = {
   selectedTag: 'all', // 現在選択されているフィルタータグ
   addedTags: [],      // 新規登録フォームで一時追加中のタグリスト
   editingCardId: null, // 編集中の名刺ID（null = 新規登録モード）
+  kassenMode: 'tag',  // 合戦モードのチーム分け基準（'tag' or 'initial'）
   tokenClient: null,  // Google OAuth Token Client
   imageCache: {},     // { fileId: blobUrl }
   user: null          // { name, email, avatarUrl }
@@ -75,6 +76,15 @@ const elements = {
   userEmail: document.getElementById('user-email'),
   userAvatar: document.getElementById('user-avatar'),
   btnLogout: document.getElementById('btn-logout'),
+  // Kassen Mode Screen（合戦モード）
+  btnKassen: document.getElementById('btn-kassen'),
+  btnCloseKassen: document.getElementById('btn-close-kassen'),
+  kassenModeSwitch: document.getElementById('kassen-mode-switch'),
+  kassenMap: document.getElementById('kassen-map'),
+  kassenEmptyState: document.getElementById('kassen-empty-state'),
+  kassenLegend: document.getElementById('kassen-legend'),
+  btnStartKassen: document.getElementById('btn-start-kassen'),
+  kassenResult: document.getElementById('kassen-result'),
   // Common UI
   loadingOverlay: document.getElementById('loading-overlay'),
   loadingText: document.getElementById('loading-text'),
@@ -888,6 +898,30 @@ function registerEventListeners() {
 
   // アカウント：ログアウト
   elements.btnLogout.addEventListener('click', logout);
+
+  // 合戦モード：開く・閉じる
+  elements.btnKassen.addEventListener('click', openKassenMode);
+  elements.btnCloseKassen.addEventListener('click', () => {
+    showScreen('screen-main');
+  });
+
+  // 合戦モード：タグ／イニシャル切り替え
+  elements.kassenModeSwitch.addEventListener('click', (e) => {
+    const btn = e.target.closest('.kassen-mode-btn');
+    if (!btn) return;
+
+    STATE.kassenMode = btn.dataset.mode;
+    document.querySelectorAll('.kassen-mode-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+
+    elements.kassenResult.innerHTML = '';
+    elements.kassenResult.classList.add('hidden');
+
+    renderKassenMap();
+  });
+
+  // 合戦モード：合戦開始
+  elements.btnStartKassen.addEventListener('click', startKassen);
 }
 
 function resetAddForm() {
@@ -1026,7 +1060,20 @@ async function handleAddCardSubmit(e) {
         }
       }
 
-      STATE.cards[cardIndex] = { ...targetCard, name, alphabet, memo, tags, imageId };
+      // チーム（タグ／イニシャル）が変わった場合のみ合戦マップ上の陣地を再配置し、
+      // 変わっていなければ以前の位置をそのまま維持する
+      const nextTeamSource = { id: targetCard.id, tags, alphabet };
+      const prevKassenPos = targetCard.kassenPos || { tag: null, initial: null };
+      const kassenPos = {
+        tag: (prevKassenPos.tag && getKassenTeamKey(nextTeamSource, 'tag') === getKassenTeamKey(targetCard, 'tag'))
+          ? prevKassenPos.tag
+          : computeKassenCell(nextTeamSource, 'tag'),
+        initial: (prevKassenPos.initial && getKassenTeamKey(nextTeamSource, 'initial') === getKassenTeamKey(targetCard, 'initial'))
+          ? prevKassenPos.initial
+          : computeKassenCell(nextTeamSource, 'initial')
+      };
+
+      STATE.cards[cardIndex] = { ...targetCard, name, alphabet, memo, tags, imageId, kassenPos };
 
       const saveSuccess = await saveMetadata();
       if (!saveSuccess) {
@@ -1055,7 +1102,13 @@ async function handleAddCardSubmit(e) {
         memo,
         tags,
         imageId: driveImageId,
-        createdAt: new Date().toISOString()
+        createdAt: new Date().toISOString(),
+        kassenPos: { tag: null, initial: null }
+      };
+      // 合戦マップ上の陣地を確定（同タグ・同イニシャルの陣地に隣接するマスへ配置）
+      newCard.kassenPos = {
+        tag: computeKassenCell(newCard, 'tag'),
+        initial: computeKassenCell(newCard, 'initial')
       };
 
       STATE.cards.push(newCard);
@@ -1077,6 +1130,282 @@ async function handleAddCardSubmit(e) {
   } finally {
     hideLoading();
   }
+}
+
+// -------------------------------------------------------------
+// KASSEN MODE（合戦モード・完全ユーモア機能）
+// -------------------------------------------------------------
+const KASSEN_PALETTE = [
+  '#f87171', '#fb923c', '#fbbf24', '#a3e635', '#34d399',
+  '#22d3ee', '#60a5fa', '#a78bfa', '#f472b6', '#facc15',
+  '#4ade80', '#38bdf8'
+];
+const KASSEN_NEUTRAL_COLOR = '#64748b';
+const KASSEN_NEUTRAL_KEYS = ['無所属', '?'];
+
+// axial座標の6方向（フラットトップ六角形）
+const HEX_DIRECTIONS = [
+  { q: 1, r: 0 }, { q: 1, r: -1 }, { q: 0, r: -1 },
+  { q: -1, r: 0 }, { q: -1, r: 1 }, { q: 0, r: 1 }
+];
+
+function openKassenMode() {
+  STATE.kassenMode = 'tag';
+  document.querySelectorAll('.kassen-mode-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.mode === 'tag');
+  });
+  elements.kassenResult.innerHTML = '';
+  elements.kassenResult.classList.add('hidden');
+
+  renderKassenMap();
+  showScreen('screen-kassen');
+}
+
+// カード1枚が所属するチームのキーを、選択中のモードに応じて算出
+function getKassenTeamKey(card, mode) {
+  if (mode === 'tag') {
+    return (card.tags && card.tags.length > 0) ? card.tags[0] : '無所属';
+  }
+  const initial = (card.alphabet || '').trim().charAt(0).toUpperCase();
+  return initial || '?';
+}
+
+// 登録名刺をチームごとにグルーピング（Map<チーム名, カード配列>）
+function buildKassenTeams(mode) {
+  const teamMap = new Map();
+  STATE.cards.forEach(card => {
+    const key = getKassenTeamKey(card, mode);
+    if (!teamMap.has(key)) teamMap.set(key, []);
+    teamMap.get(key).push(card);
+  });
+  return teamMap;
+}
+
+// チーム名から表示色を決定（無所属/不明は常にグレー、それ以外はパレットを順番に割当）
+function getKassenTeamColor(sortedTeamKeys, key) {
+  if (KASSEN_NEUTRAL_KEYS.includes(key)) return KASSEN_NEUTRAL_COLOR;
+  const coloredKeys = sortedTeamKeys.filter(k => !KASSEN_NEUTRAL_KEYS.includes(k));
+  const idx = coloredKeys.indexOf(key);
+  return KASSEN_PALETTE[idx % KASSEN_PALETTE.length];
+}
+
+function kassenCellKey(q, r) {
+  return `${q},${r}`;
+}
+
+function getHexNeighbors(q, r) {
+  return HEX_DIRECTIONS.map(d => ({ q: q + d.q, r: r + d.r }));
+}
+
+// occupied（使用済みセルの集合）を避けつつ、sources（起点となる複数セル）から
+// 同時多点BFSで最も近い空きセルを探す。sourcesが空なら大陸の一番最初の一枚として原点を返す。
+function findNextFreeCell(occupied, sources) {
+  if (sources.length === 0) {
+    return { q: 0, r: 0 };
+  }
+
+  const visited = new Set(sources.map(s => kassenCellKey(s.q, s.r)));
+  let frontier = sources;
+
+  while (frontier.length > 0) {
+    const nextFrontier = [];
+    for (const cell of frontier) {
+      for (const n of getHexNeighbors(cell.q, cell.r)) {
+        const key = kassenCellKey(n.q, n.r);
+        if (visited.has(key)) continue;
+        visited.add(key);
+        if (!occupied.has(key)) {
+          return n;
+        }
+        nextFrontier.push(n);
+      }
+    }
+    frontier = nextFrontier;
+  }
+  return { q: 0, r: 0 }; // 無限グリッドのため理論上到達しない
+}
+
+// 名刺1枚を配置するセルを決定する。
+// 同じチームの名刺が既に地図上にあれば、その隣接マスを優先して選び陣地が繋がって広がるようにする。
+// チームが地図上にまだ無ければ、大陸全体の縁に一番近い空きマスへ配置する（島が孤立しないように）。
+// 地図が完全に空なら原点(0,0)を返す。
+function computeKassenCell(card, mode) {
+  const occupied = new Set();
+  const teammateCells = [];
+  const allCells = [];
+  const team = getKassenTeamKey(card, mode);
+
+  STATE.cards.forEach(other => {
+    if (other.id === card.id) return;
+    const pos = other.kassenPos && other.kassenPos[mode];
+    if (!pos) return;
+
+    occupied.add(kassenCellKey(pos.q, pos.r));
+    allCells.push(pos);
+    if (getKassenTeamKey(other, mode) === team) {
+      teammateCells.push(pos);
+    }
+  });
+
+  const sources = teammateCells.length > 0 ? teammateCells : allCells;
+  return findNextFreeCell(occupied, sources);
+}
+
+// まだ座標を持たない名刺（過去に登録された古いデータ等）に、登録順で座標を割り当てる。
+// 1件ずつ順番に確定させることで、既に座標を持つ名刺の位置には一切影響しない。
+function ensureKassenPositions(mode) {
+  let changed = false;
+  STATE.cards.forEach(card => {
+    if (!card.kassenPos) card.kassenPos = { tag: null, initial: null };
+    if (!card.kassenPos[mode]) {
+      card.kassenPos[mode] = computeKassenCell(card, mode);
+      changed = true;
+    }
+  });
+  return changed;
+}
+
+// axial座標 -> ピクセル座標（フラットトップ六角形）
+function hexAxialToPixel(q, r, size) {
+  const x = size * 1.5 * q;
+  const y = size * (Math.sqrt(3) / 2 * q + Math.sqrt(3) * r);
+  return { x, y };
+}
+
+// フラットトップ六角形の頂点座標の文字列を生成
+function hexPolygonPoints(cx, cy, size) {
+  const points = [];
+  for (let i = 0; i < 6; i++) {
+    const angle = (Math.PI / 180) * (60 * i);
+    points.push(`${(cx + size * Math.cos(angle)).toFixed(2)},${(cy + size * Math.sin(angle)).toFixed(2)}`);
+  }
+  return points.join(' ');
+}
+
+function renderKassenMap() {
+  const svg = elements.kassenMap;
+  svg.innerHTML = '';
+
+  const cards = STATE.cards;
+  if (cards.length === 0) {
+    elements.kassenEmptyState.classList.remove('hidden');
+    elements.kassenLegend.innerHTML = '';
+    svg.setAttribute('viewBox', '-10 -10 20 20');
+    return;
+  }
+  elements.kassenEmptyState.classList.add('hidden');
+
+  // 座標未割当の名刺（過去データ等）があれば、登録順で確定させて地図に定着させる
+  const positionsChanged = ensureKassenPositions(STATE.kassenMode);
+  if (positionsChanged) {
+    saveMetadata().catch(err => console.error('Kassen座標の保存に失敗しました:', err));
+  }
+
+  const teamMap = buildKassenTeams(STATE.kassenMode);
+  const teamKeys = [...teamMap.keys()].sort((a, b) => a.localeCompare(b, 'ja'));
+
+  const hexSize = 6;
+  const pixelCoords = cards.map(card => {
+    const pos = card.kassenPos[STATE.kassenMode];
+    return hexAxialToPixel(pos.q, pos.r, hexSize);
+  });
+
+  const xs = pixelCoords.map(p => p.x);
+  const ys = pixelCoords.map(p => p.y);
+  const margin = hexSize * 1.4;
+  const minX = Math.min(...xs) - margin;
+  const maxX = Math.max(...xs) + margin;
+  const minY = Math.min(...ys) - margin;
+  const maxY = Math.max(...ys) + margin;
+  svg.setAttribute('viewBox', `${minX.toFixed(2)} ${minY.toFixed(2)} ${(maxX - minX).toFixed(2)} ${(maxY - minY).toFixed(2)}`);
+
+  cards.forEach((card, i) => {
+    const team = getKassenTeamKey(card, STATE.kassenMode);
+    const color = getKassenTeamColor(teamKeys, team);
+    const { x, y } = pixelCoords[i];
+
+    const poly = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+    poly.setAttribute('points', hexPolygonPoints(x, y, hexSize * 0.94));
+    poly.setAttribute('fill', color);
+    poly.setAttribute('fill-opacity', '0.85');
+    poly.classList.add('kassen-hex');
+    poly.dataset.team = team;
+    poly.dataset.cardId = card.id;
+
+    const title = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+    title.textContent = `${card.name}（${team}）`;
+    poly.appendChild(title);
+
+    svg.appendChild(poly);
+  });
+
+  renderKassenLegend(teamMap, teamKeys);
+}
+
+function renderKassenLegend(teamMap, teamKeys) {
+  elements.kassenLegend.innerHTML = teamKeys.map(key => {
+    const color = getKassenTeamColor(teamKeys, key);
+    const count = teamMap.get(key).length;
+    return `
+      <div class="kassen-legend-item">
+        <span class="kassen-legend-dot" style="background:${color}"></span>
+        <span class="kassen-legend-label">${escapeHTML(key)}</span>
+        <span class="kassen-legend-count">${count}</span>
+      </div>
+    `;
+  }).join('');
+}
+
+async function startKassen() {
+  if (STATE.cards.length === 0) {
+    showToast('名刺が登録されていません');
+    return;
+  }
+
+  // 前回のハイライトをリセット（再戦時にも使えるように）
+  document.querySelectorAll('.kassen-hex').forEach(hex => {
+    hex.classList.remove('kassen-hex-winner', 'kassen-hex-loser');
+  });
+  elements.kassenResult.innerHTML = '';
+  elements.kassenResult.classList.add('hidden');
+
+  const teamMap = buildKassenTeams(STATE.kassenMode);
+  const teamKeys = [...teamMap.keys()];
+
+  const winningTeam = teamKeys[Math.floor(Math.random() * teamKeys.length)];
+  const candidates = teamMap.get(winningTeam);
+  const mvp = candidates[Math.floor(Math.random() * candidates.length)];
+
+  document.querySelectorAll('.kassen-hex').forEach(hex => {
+    hex.classList.add(hex.dataset.team === winningTeam ? 'kassen-hex-winner' : 'kassen-hex-loser');
+  });
+
+  await showKassenResult(winningTeam, mvp);
+}
+
+async function showKassenResult(team, mvp) {
+  let imageUrl = '';
+  if (mvp.imageId) {
+    imageUrl = await fetchCardImage(mvp.imageId);
+  }
+
+  elements.kassenResult.innerHTML = `
+    <div class="kassen-result-card glass-card">
+      <div class="kassen-result-badge">🏆 勝利軍: ${escapeHTML(team)}</div>
+      <div class="kassen-mvp">
+        <div class="kassen-mvp-image-wrapper">
+          ${imageUrl ? `<img src="${imageUrl}" alt="${escapeHTML(mvp.name)}">` : '<i data-lucide="user"></i>'}
+        </div>
+        <div class="kassen-mvp-info">
+          <span class="kassen-mvp-label">本日のMVP</span>
+          <h3>${escapeHTML(mvp.name)}</h3>
+          <div class="alphabet">${escapeHTML(mvp.alphabet)}</div>
+        </div>
+      </div>
+    </div>
+  `;
+  elements.kassenResult.classList.remove('hidden');
+  lucide.createIcons();
 }
 
 // -------------------------------------------------------------

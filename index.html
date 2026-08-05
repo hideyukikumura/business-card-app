@@ -65,6 +65,9 @@
             <button id="btn-add-card" class="btn-icon btn-add" title="新規登録">
               <i data-lucide="plus"></i>
             </button>
+            <button id="btn-kassen" class="btn-icon" title="合戦モード">
+              <i data-lucide="swords"></i>
+            </button>
             <button id="btn-settings" class="btn-icon" title="設定">
               <i data-lucide="settings"></i>
             </button>
@@ -248,6 +251,43 @@
               </li>
             </ul>
           </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 5. KASSEN MODE SCREEN (合戦モード・完全ユーモア機能) -->
+    <section id="screen-kassen" class="screen">
+      <div class="screen-content glass-fullscreen">
+        <header class="sub-header">
+          <button id="btn-close-kassen" class="btn-back">
+            <i data-lucide="arrow-left"></i>
+          </button>
+          <h2>合戦モード</h2>
+          <div></div>
+        </header>
+
+        <div class="kassen-container">
+          <div id="kassen-mode-switch" class="kassen-mode-switch">
+            <button type="button" class="kassen-mode-btn active" data-mode="tag">タグモード</button>
+            <button type="button" class="kassen-mode-btn" data-mode="initial">イニシャルモード</button>
+          </div>
+
+          <div class="kassen-map-wrapper">
+            <svg id="kassen-map" class="kassen-map" viewBox="-10 -10 20 20" preserveAspectRatio="xMidYMid meet"></svg>
+            <div id="kassen-empty-state" class="kassen-empty-state hidden">
+              <i data-lucide="map"></i>
+              <p>名刺が登録されると大陸が生まれます</p>
+            </div>
+          </div>
+
+          <div id="kassen-legend" class="kassen-legend"></div>
+
+          <button id="btn-start-kassen" class="btn btn-primary btn-lg btn-block">
+            <i data-lucide="swords"></i>
+            <span>合戦開始</span>
+          </button>
+
+          <div id="kassen-result" class="kassen-result hidden"></div>
         </div>
       </div>
     </section>
