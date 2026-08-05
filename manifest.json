@@ -1,6 +1,6 @@
 {
-  "short_name": "名刺管理",
-  "name": "名刺管理アプリ (Google Drive)",
+  "short_name": "CardVault",
+  "name": "CardVault",
   "icons": [
     {
       "src": "icon.svg",
