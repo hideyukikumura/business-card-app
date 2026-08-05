@@ -410,7 +410,19 @@ function checkSession() {
     showScreen('screen-main');
     syncWithDrive();
   } else {
-    // サインインが必要
+    // セッションが無効（または期限切れ）の場合、サイレントログインを試みる
+    attemptSilentLogin();
+  }
+}
+
+function attemptSilentLogin() {
+  const hasLoggedInBefore = localStorage.getItem('accessToken') || localStorage.getItem('folderId');
+  if (STATE.tokenClient && hasLoggedInBefore) {
+    console.log('Attempting silent login...');
+    showLoading(t('loadingSigningIn'));
+    // prompt: 'none' でポップアップを出さずにトークンを再要求
+    STATE.tokenClient.requestAccessToken({ prompt: 'none' });
+  } else {
     showScreen('screen-auth');
   }
 }
@@ -469,7 +481,13 @@ function initGoogleAuth() {
       callback: (tokenResponse) => {
         if (tokenResponse.error) {
           hideLoading();
-          showToast(t('toastAuthError', { error: tokenResponse.error }));
+          // サイレントログイン失敗時はエラー通知を出さずにサインイン画面へ誘導
+          if (tokenResponse.error === 'interaction_required' || tokenResponse.error === 'immediate_failed') {
+            console.log('Silent login failed, showing sign-in screen.');
+            showScreen('screen-auth');
+          } else {
+            showToast(t('toastAuthError', { error: tokenResponse.error }));
+          }
           return;
         }
 
