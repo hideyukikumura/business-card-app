@@ -84,6 +84,9 @@ const elements = {
   kassenEmptyState: document.getElementById('kassen-empty-state'),
   kassenLegend: document.getElementById('kassen-legend'),
   btnStartKassen: document.getElementById('btn-start-kassen'),
+  kassenCommentary: document.getElementById('kassen-commentary'),
+  kassenCommentaryText: document.getElementById('kassen-commentary-text'),
+  btnSkipKassen: document.getElementById('btn-skip-kassen'),
   kassenResult: document.getElementById('kassen-result'),
   // Common UI
   loadingOverlay: document.getElementById('loading-overlay'),
@@ -922,6 +925,12 @@ function registerEventListeners() {
 
   // 合戦モード：合戦開始
   elements.btnStartKassen.addEventListener('click', startKassen);
+
+  // 合戦モード：実況スキップ
+  elements.btnSkipKassen.addEventListener('click', () => {
+    kassenSkipRequested = true;
+    if (kassenSkipResolver) kassenSkipResolver();
+  });
 }
 
 function resetAddForm() {
@@ -1156,6 +1165,9 @@ function openKassenMode() {
   });
   elements.kassenResult.innerHTML = '';
   elements.kassenResult.classList.add('hidden');
+  elements.kassenCommentary.classList.add('hidden');
+  elements.btnStartKassen.classList.remove('hidden');
+  setKassenControlsDisabled(false);
 
   renderKassenMap();
   showScreen('screen-kassen');
@@ -1197,9 +1209,34 @@ function getHexNeighbors(q, r) {
   return HEX_DIRECTIONS.map(d => ({ q: q + d.q, r: r + d.r }));
 }
 
+// 候補セルの中から、既に自チームの陣地に多く接しているもの（＝凹みを埋める配置）ほど
+// 選ばれやすいよう重み付けした上でランダムに選ぶ（厳密な最優先ではなく確率的な傾向）。
+// これにより、細い枝が伸びすぎるのを抑えつつも、時々自然な突起ができる程度のバランスにする。
+// sameTeamSetが無い場合（新チームの初期配置等）は単純ランダム。
+function pickBestCandidate(candidates, sameTeamSet) {
+  if (!sameTeamSet || sameTeamSet.size === 0) {
+    return candidates[Math.floor(Math.random() * candidates.length)];
+  }
+
+  const scored = candidates.map(cell => {
+    const touchCount = getHexNeighbors(cell.q, cell.r).filter(n => sameTeamSet.has(kassenCellKey(n.q, n.r))).length;
+    return { cell, weight: touchCount + 1 };
+  });
+
+  const totalWeight = scored.reduce((sum, s) => sum + s.weight, 0);
+  let roll = Math.random() * totalWeight;
+  for (const s of scored) {
+    roll -= s.weight;
+    if (roll <= 0) return s.cell;
+  }
+  return scored[scored.length - 1].cell;
+}
+
 // occupied（使用済みセルの集合）を避けつつ、sources（起点となる複数セル）から
-// 同時多点BFSで最も近い空きセルを探す。sourcesが空なら大陸の一番最初の一枚として原点を返す。
-function findNextFreeCell(occupied, sources) {
+// 同時多点BFSで空きセルを探す。同じ近さの候補が複数あれば、自陣への接触数が多いものを優先しつつ
+// 同点はランダムに選ぶことで、陣地の輪郭が幾何学的にならず自然な海岸線のようにギザギザになる。
+// sourcesが空なら大陸の一番最初の一枚として原点を返す。
+function findNextFreeCell(occupied, sources, sameTeamSet) {
   if (sources.length === 0) {
     return { q: 0, r: 0 };
   }
@@ -1208,6 +1245,7 @@ function findNextFreeCell(occupied, sources) {
   let frontier = sources;
 
   while (frontier.length > 0) {
+    const freeAtThisDistance = [];
     const nextFrontier = [];
     for (const cell of frontier) {
       for (const n of getHexNeighbors(cell.q, cell.r)) {
@@ -1215,23 +1253,57 @@ function findNextFreeCell(occupied, sources) {
         if (visited.has(key)) continue;
         visited.add(key);
         if (!occupied.has(key)) {
-          return n;
+          freeAtThisDistance.push(n);
+        } else {
+          nextFrontier.push(n);
         }
-        nextFrontier.push(n);
       }
+    }
+    if (freeAtThisDistance.length > 0) {
+      return pickBestCandidate(freeAtThisDistance, sameTeamSet);
     }
     frontier = nextFrontier;
   }
   return { q: 0, r: 0 }; // 無限グリッドのため理論上到達しない
 }
 
+function hexDistanceFromOrigin(q, r) {
+  return (Math.abs(q) + Math.abs(q + r) + Math.abs(r)) / 2;
+}
+
+// 原点を中心とした半径radiusの輪（リング）を構成する全セルを返す
+function hexRingCells(radius) {
+  if (radius === 0) return [{ q: 0, r: 0 }];
+  const results = [];
+  let hex = { q: HEX_DIRECTIONS[4].q * radius, r: HEX_DIRECTIONS[4].r * radius };
+  for (let side = 0; side < 6; side++) {
+    for (let step = 0; step < radius; step++) {
+      results.push({ ...hex });
+      hex = { q: hex.q + HEX_DIRECTIONS[side].q, r: hex.r + HEX_DIRECTIONS[side].r };
+    }
+  }
+  return results;
+}
+
+// 既存の大陸の外周から少し離れた場所に、新しい島の種となるセルをランダムに選ぶ
+function pickIslandSeed(allCells) {
+  const maxRadius = allCells.reduce((max, c) => Math.max(max, hexDistanceFromOrigin(c.q, c.r)), 0);
+  const gap = 2 + Math.floor(Math.random() * 3); // 本土から2〜4マス分離す
+  const ring = hexRingCells(maxRadius + gap);
+  return ring[Math.floor(Math.random() * ring.length)];
+}
+
+// 新しいチームが誕生したときに、本土にくっつけるか、離れた新しい島として配置するかの確率
+const KASSEN_NEW_TEAM_ISLAND_CHANCE = 0.15;
+
 // 名刺1枚を配置するセルを決定する。
 // 同じチームの名刺が既に地図上にあれば、その隣接マスを優先して選び陣地が繋がって広がるようにする。
-// チームが地図上にまだ無ければ、大陸全体の縁に一番近い空きマスへ配置する（島が孤立しないように）。
-// 地図が完全に空なら原点(0,0)を返す。
+// チームが地図上にまだ無ければ、一定確率で大陸の縁にくっつけ、それ以外は少し離れた新しい島として配置する
+// （世界地図のように複数の大陸・離島がある見た目にするため）。地図が完全に空なら原点(0,0)を返す。
 function computeKassenCell(card, mode) {
   const occupied = new Set();
   const teammateCells = [];
+  const sameTeamSet = new Set();
   const allCells = [];
   const team = getKassenTeamKey(card, mode);
 
@@ -1240,15 +1312,25 @@ function computeKassenCell(card, mode) {
     const pos = other.kassenPos && other.kassenPos[mode];
     if (!pos) return;
 
-    occupied.add(kassenCellKey(pos.q, pos.r));
+    const key = kassenCellKey(pos.q, pos.r);
+    occupied.add(key);
     allCells.push(pos);
     if (getKassenTeamKey(other, mode) === team) {
       teammateCells.push(pos);
+      sameTeamSet.add(key);
     }
   });
 
-  const sources = teammateCells.length > 0 ? teammateCells : allCells;
-  return findNextFreeCell(occupied, sources);
+  if (teammateCells.length > 0) {
+    return findNextFreeCell(occupied, teammateCells, sameTeamSet);
+  }
+
+  if (allCells.length > 0 && Math.random() < KASSEN_NEW_TEAM_ISLAND_CHANCE) {
+    const seed = pickIslandSeed(allCells);
+    return findNextFreeCell(occupied, [seed]);
+  }
+
+  return findNextFreeCell(occupied, allCells);
 }
 
 // まだ座標を持たない名刺（過去に登録された古いデータ等）に、登録順で座標を割り当てる。
@@ -1356,13 +1438,45 @@ function renderKassenLegend(teamMap, teamKeys) {
   }).join('');
 }
 
+// 敗退実況の言い回しバリエーション（{team}, {name} を置換して使用）
+const KASSEN_NARRATION_TEMPLATES = [
+  '【{team}】{name}さんの活躍むなしく、惜しくも敗退…',
+  '【{team}】{name}さん、健闘及ばず脱落…',
+  '【{team}】{name}さんが奮戦するも、力及ばず敗退…',
+  '【{team}】ここで{team}が脱落。{name}さん、お疲れ様でした…'
+];
+const KASSEN_NARRATION_STEP_MS = 1800;
+
+let kassenSkipRequested = false;
+let kassenSkipResolver = null;
+
+// ms待つが、スキップされた場合は即座に解決される中断可能な待機
+function kassenInterruptibleDelay(ms) {
+  return new Promise(resolve => {
+    const timer = setTimeout(() => {
+      kassenSkipResolver = null;
+      resolve();
+    }, ms);
+    kassenSkipResolver = () => {
+      clearTimeout(timer);
+      kassenSkipResolver = null;
+      resolve();
+    };
+  });
+}
+
+function setKassenControlsDisabled(disabled) {
+  document.querySelectorAll('.kassen-mode-btn').forEach(b => { b.disabled = disabled; });
+  elements.btnCloseKassen.disabled = disabled;
+}
+
 async function startKassen() {
   if (STATE.cards.length === 0) {
     showToast('名刺が登録されていません');
     return;
   }
 
-  // 前回のハイライトをリセット（再戦時にも使えるように）
+  // 前回のハイライト・結果をリセット（再戦時にも使えるように）
   document.querySelectorAll('.kassen-hex').forEach(hex => {
     hex.classList.remove('kassen-hex-winner', 'kassen-hex-loser');
   });
@@ -1372,14 +1486,54 @@ async function startKassen() {
   const teamMap = buildKassenTeams(STATE.kassenMode);
   const teamKeys = [...teamMap.keys()];
 
-  const winningTeam = teamKeys[Math.floor(Math.random() * teamKeys.length)];
-  const candidates = teamMap.get(winningTeam);
-  const mvp = candidates[Math.floor(Math.random() * candidates.length)];
+  // シャッフルして脱落順を決定する（最後に残った1チームが勝者）
+  for (let i = teamKeys.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [teamKeys[i], teamKeys[j]] = [teamKeys[j], teamKeys[i]];
+  }
+  const winningTeam = teamKeys[teamKeys.length - 1];
+  const eliminationOrder = teamKeys.slice(0, teamKeys.length - 1);
 
+  kassenSkipRequested = false;
+  setKassenControlsDisabled(true);
+  elements.btnStartKassen.classList.add('hidden');
+  elements.kassenCommentaryText.textContent = '合戦開始…！';
+  elements.kassenCommentary.classList.remove('hidden');
+
+  await kassenInterruptibleDelay(900);
+
+  for (const team of eliminationOrder) {
+    if (kassenSkipRequested) break;
+
+    const members = teamMap.get(team);
+    const featured = members[Math.floor(Math.random() * members.length)];
+    const template = KASSEN_NARRATION_TEMPLATES[Math.floor(Math.random() * KASSEN_NARRATION_TEMPLATES.length)];
+    elements.kassenCommentaryText.textContent = template.replace(/\{team\}/g, team).replace(/\{name\}/g, featured.name);
+
+    document.querySelectorAll('.kassen-hex').forEach(hex => {
+      if (hex.dataset.team === team) hex.classList.add('kassen-hex-loser');
+    });
+
+    if (kassenSkipRequested) break;
+    await kassenInterruptibleDelay(KASSEN_NARRATION_STEP_MS);
+  }
+
+  // スキップされた場合も含め、勝者以外は必ず敗退表示に揃える
   document.querySelectorAll('.kassen-hex').forEach(hex => {
-    hex.classList.add(hex.dataset.team === winningTeam ? 'kassen-hex-winner' : 'kassen-hex-loser');
+    if (hex.dataset.team === winningTeam) {
+      hex.classList.add('kassen-hex-winner');
+      hex.classList.remove('kassen-hex-loser');
+    } else {
+      hex.classList.add('kassen-hex-loser');
+    }
   });
 
+  elements.kassenCommentary.classList.add('hidden');
+  elements.btnStartKassen.classList.remove('hidden');
+  setKassenControlsDisabled(false);
+
+  const candidates = teamMap.get(winningTeam);
+  const mvp = candidates[Math.floor(Math.random() * candidates.length)];
   await showKassenResult(winningTeam, mvp);
 }
 
@@ -1392,7 +1546,7 @@ async function showKassenResult(team, mvp) {
   elements.kassenResult.innerHTML = `
     <div class="kassen-result-card glass-card">
       <div class="kassen-result-badge">🏆 勝利軍: ${escapeHTML(team)}</div>
-      <div class="kassen-mvp">
+      <button type="button" id="kassen-mvp-link" class="kassen-mvp kassen-mvp-clickable" title="この名刺を見る">
         <div class="kassen-mvp-image-wrapper">
           ${imageUrl ? `<img src="${imageUrl}" alt="${escapeHTML(mvp.name)}">` : '<i data-lucide="user"></i>'}
         </div>
@@ -1401,11 +1555,34 @@ async function showKassenResult(team, mvp) {
           <h3>${escapeHTML(mvp.name)}</h3>
           <div class="alphabet">${escapeHTML(mvp.alphabet)}</div>
         </div>
-      </div>
+        <i data-lucide="chevron-right" class="kassen-mvp-arrow"></i>
+      </button>
     </div>
   `;
   elements.kassenResult.classList.remove('hidden');
   lucide.createIcons();
+
+  const mvpLink = document.getElementById('kassen-mvp-link');
+  if (mvpLink) {
+    mvpLink.addEventListener('click', () => goToCardFromKassen(mvp.id));
+  }
+}
+
+// MVPの名刺タップで合戦モードを抜け、メイン画面でその名刺までスクロールする
+function goToCardFromKassen(cardId) {
+  showScreen('screen-main');
+
+  elements.searchInput.value = '';
+  elements.btnClearSearch.classList.add('hidden');
+  STATE.selectedTag = 'all';
+  renderApp();
+
+  const index = STATE.filteredCards.findIndex(c => c.id === cardId);
+  if (index !== -1) {
+    scrollToCard(index, false);
+  } else {
+    showToast('名刺が見つかりませんでした');
+  }
 }
 
 // -------------------------------------------------------------

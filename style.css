@@ -1071,6 +1071,32 @@ body {
   color: var(--text-muted);
 }
 
+.kassen-mode-btn:disabled,
+.btn-back:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.kassen-commentary {
+  padding: 20px;
+  border-radius: 20px;
+  background: rgba(30, 41, 59, 0.5);
+  border: 1px solid var(--border-glass);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  animation: kassen-reveal 0.3s ease;
+}
+
+.kassen-commentary-text {
+  font-size: 0.9rem;
+  font-weight: 600;
+  line-height: 1.5;
+  text-align: center;
+  color: var(--text-primary);
+  min-height: 2.7em;
+}
+
 .kassen-result-card {
   padding: 20px;
   border-radius: 20px;
@@ -1096,6 +1122,30 @@ body {
   display: flex;
   align-items: center;
   gap: 16px;
+}
+
+.kassen-mvp-clickable {
+  width: 100%;
+  border: none;
+  background: transparent;
+  padding: 4px;
+  border-radius: 14px;
+  font-family: var(--font-family);
+  text-align: left;
+  cursor: pointer;
+  transition: var(--transition-smooth);
+}
+
+.kassen-mvp-clickable:active {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.kassen-mvp-arrow {
+  width: 18px;
+  height: 18px;
+  color: var(--text-muted);
+  margin-left: auto;
+  flex-shrink: 0;
 }
 
 .kassen-mvp-image-wrapper {
