@@ -28,7 +28,7 @@ const DRIVE_UPLOAD_BASE = 'https://www.googleapis.com/upload/drive/v3';
 // -------------------------------------------------------------
 const I18N = {
   ja: {
-    pageTitle: '名刺管理 App',
+    pageTitle: 'CardVault',
     btnLogin: 'Google アカウントでサインイン',
     btnOpenSetup: '初期設定 (OAuth クライアントID)',
 
@@ -135,7 +135,7 @@ const I18N = {
     userNoName: 'ユーザー名なし'
   },
   en: {
-    pageTitle: 'Business Card Manager',
+    pageTitle: 'CardVault',
     btnLogin: 'Sign in with Google',
     btnOpenSetup: 'Initial Setup (OAuth Client ID)',
 
