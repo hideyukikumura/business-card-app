@@ -301,9 +301,6 @@
           </button>
           <h2 data-i18n="headingKassen">合戦モード</h2>
           <div class="header-actions">
-            <button id="btn-kassen-regenerate" class="btn-icon" title="地形再生成" data-i18n-title="titleKassenRegenerate">
-              <i data-lucide="shuffle"></i>
-            </button>
             <button id="btn-kassen-ranking" class="btn-icon" title="ランキング" data-i18n-title="titleKassenRanking">
               <i data-lucide="trophy"></i>
             </button>
@@ -318,6 +315,9 @@
 
           <div class="kassen-map-wrapper">
             <svg id="kassen-map" class="kassen-map" viewBox="-10 -10 20 20" preserveAspectRatio="xMidYMid meet"></svg>
+            <button id="btn-kassen-regenerate" class="kassen-map-overlay-btn" title="地形再生成" data-i18n-title="titleKassenRegenerate">
+              <i data-lucide="shuffle"></i>
+            </button>
             <div id="kassen-empty-state" class="kassen-empty-state hidden">
               <i data-lucide="map"></i>
               <p data-i18n="mapEmpty">名刺が登録されると大陸が生まれます</p>
