@@ -323,7 +323,22 @@ body {
   gap: 8px;
 }
 
-/* 検索バー */
+/* 検索バー + 並べ替えボタン */
+.search-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.search-row .search-bar {
+  flex: 1;
+  min-width: 0;
+}
+
+.search-row .btn-icon {
+  flex-shrink: 0;
+}
+
 .search-bar {
   position: relative;
   display: flex;

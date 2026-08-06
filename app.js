@@ -10,6 +10,7 @@ let STATE = {
   cards: [],          // すべての名刺データ
   filteredCards: [],  // 検索・フィルター後の名刺データ
   selectedTag: 'all', // 現在選択されているフィルタータグ
+  sortMode: 'newest', // 一覧の並べ替え基準（'newest' or 'alphabet'）
   addedTags: [],      // 新規登録フォームで一時追加中のタグリスト
   editingCardId: null, // 編集中の名刺ID（null = 新規登録モード）
   language: localStorage.getItem('language') || 'ja', // UI表示言語（'ja' or 'en'。名刺データ自体には影響しない）
@@ -36,6 +37,8 @@ const I18N = {
     titleAdd: '新規登録',
     titleKassen: '合戦モード',
     titleSettings: '設定',
+    titleSortNewest: '並べ替え：登録が新しい順',
+    titleSortAlphabet: '並べ替え：アルファベット順',
     searchPlaceholder: '名前・アルファベットで検索...',
     tagAll: 'すべて',
     emptyNoCards: '名刺が登録されていません',
@@ -143,6 +146,8 @@ const I18N = {
     titleAdd: 'Add Card',
     titleKassen: 'Showdown Mode',
     titleSettings: 'Settings',
+    titleSortNewest: 'Sort: Newest first',
+    titleSortAlphabet: 'Sort: Alphabetical',
     searchPlaceholder: 'Search by name or alphabet...',
     tagAll: 'All',
     emptyNoCards: 'No business cards yet',
@@ -289,6 +294,7 @@ function applyLanguage(lang) {
   }
 
   // 動的に生成される画面（一覧・タグフィルター・追加/編集画面）を現在の言語で再描画
+  updateSortButtonUI();
   renderApp();
   elements.addScreenTitle.textContent = STATE.editingCardId ? t('addTitleEdit') : t('addTitleNew');
   elements.btnSubmitText.textContent = STATE.editingCardId ? t('submitEdit') : t('submitNew');
@@ -319,6 +325,7 @@ const elements = {
   btnSettings: document.getElementById('btn-settings'),
   searchInput: document.getElementById('search-input'),
   btnClearSearch: document.getElementById('btn-clear-search'),
+  btnSort: document.getElementById('btn-sort'),
   tagFilters: document.getElementById('tag-filters'),
   cardDeck: document.getElementById('card-deck'),
   cardIndicator: document.getElementById('card-indicator'),
@@ -416,11 +423,21 @@ function checkSession() {
   }
 }
 
+let silentLoginTimeout = null;
+
 function attemptSilentLogin() {
   const hasLoggedInBefore = localStorage.getItem('accessToken') || localStorage.getItem('folderId');
   if (STATE.tokenClient && hasLoggedInBefore) {
     console.log('Attempting silent login...');
     showLoading(t('loadingSigningIn'));
+    // ブラウザの制限等でコールバックが一切呼ばれないケースに備え、
+    // 一定時間応答がなければ強制的にサインイン画面へフォールバックする
+    clearTimeout(silentLoginTimeout);
+    silentLoginTimeout = setTimeout(() => {
+      console.log('Silent login timed out, showing sign-in screen.');
+      hideLoading();
+      showScreen('screen-auth');
+    }, 4000);
     // prompt: 'none' でポップアップを出さずにトークンを再要求
     STATE.tokenClient.requestAccessToken({ prompt: 'none' });
   } else {
@@ -480,6 +497,7 @@ function initGoogleAuth() {
       client_id: STATE.clientId,
       scope: 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/userinfo.email',
       callback: (tokenResponse) => {
+        clearTimeout(silentLoginTimeout);
         if (tokenResponse.error) {
           hideLoading();
           // サイレントログイン失敗時はエラー通知を出さずにサインイン画面へ誘導
@@ -795,6 +813,13 @@ function renderApp() {
   renderCards();
 }
 
+// 並べ替えボタンのツールチップ表示を現在のモードに合わせて更新
+function updateSortButtonUI() {
+  elements.btnSort.title = STATE.sortMode === 'alphabet'
+    ? t('titleSortAlphabet')
+    : t('titleSortNewest');
+}
+
 function filterCards() {
   const query = elements.searchInput.value.toLowerCase().trim();
   
@@ -811,9 +836,15 @@ function filterCards() {
     return matchQuery && matchTag;
   });
 
-  // 日付の降順にソート（新しい順）
-  STATE.filteredCards.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-  
+  // 並べ替えボタンで選択中のモードに応じてソート（タグ絞り込み後の範囲内で並べ替える）
+  if (STATE.sortMode === 'alphabet') {
+    STATE.filteredCards.sort((a, b) =>
+      (a.alphabet || '').localeCompare(b.alphabet || '', undefined, { sensitivity: 'base' })
+    );
+  } else {
+    STATE.filteredCards.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  }
+
   currentSwipeIndex = 0; // 検索時は先頭へ戻す
 }
 
@@ -1130,6 +1161,13 @@ function registerEventListeners() {
   elements.btnClearSearch.addEventListener('click', () => {
     elements.searchInput.value = '';
     elements.btnClearSearch.classList.add('hidden');
+    renderApp();
+  });
+
+  // 並べ替え（新しい順 ⇔ アルファベット順をトグル）
+  elements.btnSort.addEventListener('click', () => {
+    STATE.sortMode = STATE.sortMode === 'newest' ? 'alphabet' : 'newest';
+    updateSortButtonUI();
     renderApp();
   });
 

@@ -75,11 +75,16 @@
         </div>
         
         <!-- 検索バー -->
-        <div class="search-bar">
-          <i data-lucide="search"></i>
-          <input type="text" id="search-input" placeholder="名前・アルファベットで検索..." data-i18n-placeholder="searchPlaceholder" autocomplete="off">
-          <button id="btn-clear-search" class="btn-clear hidden">
-            <i data-lucide="x"></i>
+        <div class="search-row">
+          <div class="search-bar">
+            <i data-lucide="search"></i>
+            <input type="text" id="search-input" placeholder="名前・アルファベットで検索..." data-i18n-placeholder="searchPlaceholder" autocomplete="off">
+            <button id="btn-clear-search" class="btn-clear hidden">
+              <i data-lucide="x"></i>
+            </button>
+          </div>
+          <button id="btn-sort" class="btn-icon" title="登録が新しい順" data-i18n-title="titleSortNewest">
+            <i data-lucide="arrow-down-up"></i>
           </button>
         </div>
 
