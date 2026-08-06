@@ -15,6 +15,10 @@ let STATE = {
   editingCardId: null, // 編集中の名刺ID（null = 新規登録モード）
   language: localStorage.getItem('language') || 'ja', // UI表示言語（'ja' or 'en'。名刺データ自体には影響しない）
   kassenMode: 'tag',  // 合戦モードのチーム分け基準（'tag' or 'initial'）
+  // これまでの合戦数（Google Driveのmetadata.jsonに保存。タグモード/イニシャルモードそれぞれ別に保持）
+  // サインイン直後のsyncWithDrive()内でloadMetadata()が実際の値に上書きする
+  kassenBattleCount: { tag: 0, initial: 0 },
+  kassenView: 'map',  // 合戦モード画面内の表示切り替え（'map' or 'ranking'。ランキングは未実装のプレースホルダー）
   tokenClient: null,  // Google OAuth Token Client
   imageCache: {},     // { fileId: blobUrl }
   user: null          // { name, email, avatarUrl }
@@ -81,12 +85,29 @@ const I18N = {
     headingLanguage: '言語',
     langJapanese: '日本語',
     langEnglish: 'English',
+    headingKassenData: '合戦データ',
+    btnResetKassenHistory: '合戦履歴をリセット',
+    confirmResetKassenHistory: 'すべての合戦履歴をリセットします。よろしいですか？',
+    toastKassenHistoryReset: '合戦履歴をリセットしました',
+    toastKassenResetError: '合戦履歴のリセットに失敗しました',
     headingAppInfo: 'アプリ情報',
     infoVersion: 'バージョン',
     infoStorage: 'ストレージ',
     infoStorageValue: 'Google ドライブ (BusinessCardManagerApp フォルダ)',
 
     headingKassen: '合戦モード',
+    titleKassenRegenerate: '地形再生成',
+    titleKassenRanking: 'ランキング',
+    kassenBattleCountLabel: 'これまでの合戦数: {count}回',
+    headingKassenRanking: 'MVPランキング',
+    kassenRankingEmpty: 'まだMVPが選ばれていません',
+    kassenRankingCount: '{count}pt',
+    kassenAnniversaryLabel: '🎉 10回記念大会ボーナス！',
+    kassenCentennialLabel: '🎊 100回記念大会ボーナス！',
+    confirmKassenRegenerate: '現在の地形をリセットして新しい地形にします。よろしいですか？',
+    btnYes: 'はい',
+    btnNo: 'いいえ',
+    btnClose: '閉じる',
     modeTag: 'タグモード',
     modeInitial: 'イニシャルモード',
     mapEmpty: '名刺が登録されると大陸が生まれます',
@@ -190,12 +211,29 @@ const I18N = {
     headingLanguage: 'Language',
     langJapanese: '日本語',
     langEnglish: 'English',
+    headingKassenData: 'Showdown Data',
+    btnResetKassenHistory: 'Reset Showdown History',
+    confirmResetKassenHistory: 'This will reset all Showdown history. Continue?',
+    toastKassenHistoryReset: 'Showdown history has been reset',
+    toastKassenResetError: 'Failed to reset Showdown history',
     headingAppInfo: 'App Info',
     infoVersion: 'Version',
     infoStorage: 'Storage',
     infoStorageValue: 'Google Drive (BusinessCardManagerApp folder)',
 
     headingKassen: 'Showdown Mode',
+    titleKassenRegenerate: 'Regenerate Terrain',
+    titleKassenRanking: 'Ranking',
+    kassenBattleCountLabel: 'Battles so far: {count}',
+    headingKassenRanking: 'MVP Ranking',
+    kassenRankingEmpty: 'No MVPs have been awarded yet',
+    kassenRankingCount: '{count}pt',
+    kassenAnniversaryLabel: '🎉 10-Battle Anniversary Bonus!',
+    kassenCentennialLabel: '🎊 100-Battle Anniversary Bonus!',
+    confirmKassenRegenerate: 'This will reset the current terrain and generate a new layout. Continue?',
+    btnYes: 'Yes',
+    btnNo: 'No',
+    btnClose: 'Close',
     modeTag: 'Tag Mode',
     modeInitial: 'Initial Mode',
     mapEmpty: 'A continent will form as you add cards',
@@ -303,6 +341,8 @@ function applyLanguage(lang) {
   // 合戦モード表示中のみ地図を再描画（不要なDrive書き込みを避けるため）
   if (document.getElementById('screen-kassen').classList.contains('active')) {
     renderKassenMap();
+    updateKassenBattleCountDisplay();
+    if (STATE.kassenView === 'ranking') renderKassenRanking();
   }
 }
 
@@ -363,9 +403,22 @@ const elements = {
   userAvatar: document.getElementById('user-avatar'),
   btnLogout: document.getElementById('btn-logout'),
   langSwitch: document.getElementById('lang-switch'),
+  btnResetKassenHistory: document.getElementById('btn-reset-kassen-history'),
+  kassenResetConfirm: document.getElementById('kassen-reset-confirm'),
+  btnResetKassenHistoryYes: document.getElementById('btn-reset-kassen-history-yes'),
+  btnResetKassenHistoryNo: document.getElementById('btn-reset-kassen-history-no'),
   // Kassen Mode Screen（合戦モード）
   btnKassen: document.getElementById('btn-kassen'),
   btnCloseKassen: document.getElementById('btn-close-kassen'),
+  btnKassenRegenerate: document.getElementById('btn-kassen-regenerate'),
+  btnKassenRanking: document.getElementById('btn-kassen-ranking'),
+  kassenRankingView: document.getElementById('kassen-ranking-view'),
+  kassenRankingList: document.getElementById('kassen-ranking-list'),
+  btnCloseKassenRanking: document.getElementById('btn-close-kassen-ranking'),
+  kassenBattleCount: document.getElementById('kassen-battle-count'),
+  kassenRegenerateConfirm: document.getElementById('kassen-regenerate-confirm'),
+  btnKassenRegenerateYes: document.getElementById('btn-kassen-regenerate-yes'),
+  btnKassenRegenerateNo: document.getElementById('btn-kassen-regenerate-no'),
   kassenModeSwitch: document.getElementById('kassen-mode-switch'),
   kassenMap: document.getElementById('kassen-map'),
   kassenMapWrapper: document.querySelector('.kassen-map-wrapper'),
@@ -688,7 +741,7 @@ async function getOrCreateMetadataFileId() {
 
   const boundary = 'foo_bar_baz';
   const metadataPart = JSON.stringify(fileMetadata);
-  const mediaPart = JSON.stringify([]); // 空の名刺リスト
+  const mediaPart = JSON.stringify({ cards: [], kassenBattleCount: { tag: 0, initial: 0 } }); // 空の名刺リスト
 
   const multipartBody = 
     `\r\n--${boundary}\r\n` +
@@ -715,18 +768,42 @@ async function getOrCreateMetadataFileId() {
 async function loadMetadata() {
   const res = await driveFetch(`${DRIVE_API_BASE}/files/${STATE.metadataFileId}?alt=media`);
   if (res.ok) {
-    STATE.cards = await res.json();
+    const data = await res.json();
+    if (Array.isArray(data)) {
+      // 旧形式（名刺配列のみ）。合戦数はこの端末のlocalStorageに残っていれば一度だけ引き継ぐ
+      STATE.cards = data;
+      STATE.kassenBattleCount = readLegacyLocalBattleCount();
+    } else {
+      STATE.cards = data.cards || [];
+      STATE.kassenBattleCount = normalizeKassenBattleCount(data.kassenBattleCount);
+    }
   } else {
     throw new Error('Failed to load metadata');
   }
 }
 
-// metadata.json をドライブに保存
+// 旧バージョン（合戦数をlocalStorageのみに保存していた頃）からの一度きりの移行用
+function readLegacyLocalBattleCount() {
+  try {
+    const raw = JSON.parse(localStorage.getItem('kassenBattleCount') || 'null');
+    return normalizeKassenBattleCount(raw);
+  } catch (e) {
+    return { tag: 0, initial: 0 };
+  }
+}
+
+function normalizeKassenBattleCount(raw) {
+  if (raw && typeof raw === 'object') return { tag: raw.tag || 0, initial: raw.initial || 0 };
+  if (typeof raw === 'number') return { tag: raw, initial: 0 }; // さらに古い（モード区別なしの合算値）形式
+  return { tag: 0, initial: 0 };
+}
+
+// metadata.json をドライブに保存（名刺データと合戦数をまとめて保存する）
 async function saveMetadata() {
   const res = await driveFetch(`${DRIVE_UPLOAD_BASE}/files/${STATE.metadataFileId}?uploadType=media`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(STATE.cards)
+    body: JSON.stringify({ cards: STATE.cards, kassenBattleCount: STATE.kassenBattleCount })
   });
   return res.ok;
 }
@@ -1272,10 +1349,47 @@ function registerEventListeners() {
   // アカウント：ログアウト
   elements.btnLogout.addEventListener('click', logout);
 
+  // 設定画面：合戦履歴のリセット（確認ダイアログ）
+  elements.btnResetKassenHistory.addEventListener('click', () => {
+    elements.kassenResetConfirm.classList.remove('hidden');
+  });
+  elements.btnResetKassenHistoryNo.addEventListener('click', () => {
+    elements.kassenResetConfirm.classList.add('hidden');
+  });
+  elements.btnResetKassenHistoryYes.addEventListener('click', () => {
+    elements.kassenResetConfirm.classList.add('hidden');
+    resetKassenHistory();
+  });
+
   // 合戦モード：開く・閉じる
   elements.btnKassen.addEventListener('click', openKassenMode);
   elements.btnCloseKassen.addEventListener('click', () => {
     showScreen('screen-main');
+  });
+
+  // 合戦モード：ランキング表示の切り替え（トグル）
+  elements.btnKassenRanking.addEventListener('click', () => {
+    showKassenView(STATE.kassenView === 'ranking' ? 'map' : 'ranking');
+  });
+  elements.btnCloseKassenRanking.addEventListener('click', () => {
+    showKassenView('map');
+  });
+  elements.kassenRankingList.addEventListener('click', (e) => {
+    const item = e.target.closest('.kassen-ranking-item');
+    if (!item) return;
+    goToCardFromKassen(item.dataset.id);
+  });
+
+  // 合戦モード：地形再生成（確認ダイアログ）
+  elements.btnKassenRegenerate.addEventListener('click', () => {
+    elements.kassenRegenerateConfirm.classList.remove('hidden');
+  });
+  elements.btnKassenRegenerateNo.addEventListener('click', () => {
+    elements.kassenRegenerateConfirm.classList.add('hidden');
+  });
+  elements.btnKassenRegenerateYes.addEventListener('click', () => {
+    elements.kassenRegenerateConfirm.classList.add('hidden');
+    regenerateKassenTerrain();
   });
 
   // 合戦モード：タグ／イニシャル切り替え
@@ -1291,6 +1405,8 @@ function registerEventListeners() {
     elements.kassenResult.classList.add('hidden');
 
     renderKassenMap();
+    updateKassenBattleCountDisplay();
+    if (STATE.kassenView === 'ranking') renderKassenRanking();
   });
 
   // 合戦モード：ヘックスをタップすると、その名刺の名前をタップ位置の少し上にポップアップ表示
@@ -1547,13 +1663,121 @@ function openKassenMode() {
     b.classList.toggle('active', b.dataset.mode === 'tag');
   });
   elements.kassenResult.innerHTML = '';
-  elements.kassenResult.classList.add('hidden');
-  elements.kassenCommentary.classList.add('hidden');
-  elements.btnStartKassen.classList.remove('hidden');
   setKassenControlsDisabled(false);
+  showKassenView('map');
+  elements.kassenRegenerateConfirm.classList.add('hidden');
+  updateKassenBattleCountDisplay();
 
   renderKassenMap();
   showScreen('screen-kassen');
+}
+
+// タグモード／イニシャルモードそれぞれの合戦数・MVP数を独立に扱うためのヘルパー
+function getKassenBattleCount(mode) {
+  return (STATE.kassenBattleCount && STATE.kassenBattleCount[mode]) || 0;
+}
+
+// card.mvpCount はMVP獲得「回数」ではなく、獲得ポイントの累計値（pt）を保持する
+function getCardMvpCount(card, mode) {
+  if (card.mvpCount && typeof card.mvpCount === 'object') {
+    return card.mvpCount[mode] || 0;
+  }
+  // 旧形式（モード区別なしの合算値）はタグモードの実績として扱う
+  return mode === 'tag' ? (card.mvpCount || 0) : 0;
+}
+
+// 通常は+1pt、10回記念大会（合戦数が10の倍数）のMVPは+10pt
+function incrementCardMvpCount(card, mode, points = 1) {
+  if (!card.mvpCount || typeof card.mvpCount !== 'object') {
+    const legacy = typeof card.mvpCount === 'number' ? card.mvpCount : 0;
+    card.mvpCount = { tag: legacy, initial: 0 };
+  }
+  card.mvpCount[mode] = (card.mvpCount[mode] || 0) + points;
+}
+
+// 合戦履歴（両モードの合戦数・全名刺の両モードのMVP数）をすべて0にリセットする
+async function resetKassenHistory() {
+  showLoading(t('loadingDefault'));
+
+  STATE.kassenBattleCount = { tag: 0, initial: 0 };
+  STATE.cards.forEach(card => { card.mvpCount = { tag: 0, initial: 0 }; });
+
+  const saveSuccess = await saveMetadata();
+  hideLoading();
+
+  updateKassenBattleCountDisplay();
+  if (STATE.kassenView === 'ranking') renderKassenRanking();
+
+  showToast(saveSuccess ? t('toastKassenHistoryReset') : t('toastKassenResetError'));
+}
+
+function updateKassenBattleCountDisplay() {
+  elements.kassenBattleCount.textContent = t('kassenBattleCountLabel', { count: getKassenBattleCount(STATE.kassenMode) });
+}
+
+// 合戦モード画面内の表示切り替え（'map' = 地図・合戦, 'ranking' = ランキング〔今後実装予定〕）
+function showKassenView(view) {
+  STATE.kassenView = view;
+  const isRanking = view === 'ranking';
+
+  elements.kassenRankingView.classList.toggle('hidden', !isRanking);
+  elements.kassenModeSwitch.classList.toggle('hidden', isRanking);
+  elements.kassenMapWrapper.classList.toggle('hidden', isRanking);
+  elements.kassenLegend.classList.toggle('hidden', isRanking);
+  elements.btnStartKassen.classList.toggle('hidden', isRanking);
+  if (isRanking) {
+    elements.kassenCommentary.classList.add('hidden');
+    elements.kassenResult.classList.add('hidden');
+    renderKassenRanking();
+  }
+
+  elements.btnKassenRanking.classList.toggle('active', isRanking);
+  elements.btnKassenRegenerate.disabled = isRanking;
+}
+
+// 累計MVP数の降順（同数なら登録年月が古い方、さらに同じならアルファベット順）でランキングを算出する。
+// MVP未獲得（0回）の名刺はランキング対象外で、上位20名まで表示する。
+function getKassenRanking() {
+  const mode = STATE.kassenMode;
+  return STATE.cards
+    .filter(card => getCardMvpCount(card, mode) >= 1)
+    .slice()
+    .sort((a, b) => {
+      const countDiff = getCardMvpCount(b, mode) - getCardMvpCount(a, mode);
+      if (countDiff !== 0) return countDiff;
+
+      const monthA = getCardRegisteredMonth(a);
+      const monthB = getCardRegisteredMonth(b);
+      if (monthA !== monthB) return monthA.localeCompare(monthB); // 登録年月が古い方が上位
+
+      return (a.alphabet || '').localeCompare(b.alphabet || '', undefined, { sensitivity: 'base' });
+    })
+    .slice(0, 20);
+}
+
+function renderKassenRanking() {
+  const mode = STATE.kassenMode;
+  const ranking = getKassenRanking();
+
+  if (ranking.length === 0) {
+    elements.kassenRankingList.innerHTML = `<p class="kassen-ranking-empty">${t('kassenRankingEmpty')}</p>`;
+    return;
+  }
+
+  elements.kassenRankingList.innerHTML = ranking.map((card, i) => {
+    const rank = i + 1;
+    return `
+      <button type="button" class="kassen-ranking-item rank-${rank}" data-id="${card.id}">
+        <span class="kassen-ranking-rank">${rank === 1 ? '<i data-lucide="crown"></i>' : rank}</span>
+        <span class="kassen-ranking-info">
+          <span class="kassen-ranking-name">${escapeHTML(card.name)}</span>
+          <span class="kassen-ranking-alphabet">${escapeHTML(card.alphabet)}</span>
+        </span>
+        <span class="kassen-ranking-count">${t('kassenRankingCount', { count: getCardMvpCount(card, mode) })}</span>
+      </button>
+    `;
+  }).join('');
+  lucide.createIcons();
 }
 
 // カードが所属する軍のキー一覧を返す。タグモードでは、持っている全てのタグそれぞれの軍に所属する
@@ -1740,6 +1964,18 @@ function computeKassenCell(card, mode, team) {
 // - 既存の座標には一切手を触れない（安定して同じ場所に留まる）
 // 1件ずつ順番に確定させることで、既存の配備の位置には影響しない。
 // 旧バージョン（単一座標形式）のデータが残っていた場合は、ここで新形式に移行する。
+// 現在表示中のモードの配置を全て破棄し、renderKassenMap内のensureKassenPositions()に
+// 一から再計算させることで、新しいランダム配置の地形を生成する
+function regenerateKassenTerrain() {
+  const mode = STATE.kassenMode;
+  STATE.cards.forEach(card => {
+    if (card.kassenPos && card.kassenPos[mode]) {
+      card.kassenPos[mode] = {};
+    }
+  });
+  renderKassenMap();
+}
+
 function ensureKassenPositions(mode) {
   let changed = false;
   STATE.cards.forEach(card => {
@@ -1915,7 +2151,7 @@ function renderKassenLegend(teamMap, teamKeys) {
     const color = getKassenTeamColor(teamKeys, key);
     const count = teamMap.get(key).length;
     return `
-      <div class="kassen-legend-item">
+      <div class="kassen-legend-item" data-team="${escapeHTML(key)}">
         <span class="kassen-legend-dot" style="background:${color}"></span>
         <span class="kassen-legend-label">${escapeHTML(getKassenTeamDisplayLabel(key))}</span>
         <span class="kassen-legend-count">${count}</span>
@@ -1955,9 +2191,20 @@ async function startKassen() {
     return;
   }
 
+  // これまでの合戦数をカウント（現在のモード＝タグ/イニシャルごとに個別で保存）
+  STATE.kassenBattleCount[STATE.kassenMode] = (STATE.kassenBattleCount[STATE.kassenMode] || 0) + 1;
+  const battleNumber = STATE.kassenBattleCount[STATE.kassenMode];
+  // 100の倍数の合戦は「100回記念大会」（+10pt）、10の倍数（100の倍数を除く）は「10回記念大会」（+5pt）
+  const isCentennialBattle = battleNumber % 100 === 0;
+  const isAnniversaryBattle = !isCentennialBattle && battleNumber % 10 === 0;
+  updateKassenBattleCountDisplay();
+
   // 前回のハイライト・結果をリセット（再戦時にも使えるように）
   document.querySelectorAll('.kassen-hex').forEach(hex => {
     hex.classList.remove('kassen-hex-winner', 'kassen-hex-loser');
+  });
+  document.querySelectorAll('.kassen-legend-item').forEach(item => {
+    item.classList.remove('kassen-legend-item-loser');
   });
   elements.kassenResult.innerHTML = '';
   elements.kassenResult.classList.add('hidden');
@@ -1995,6 +2242,8 @@ async function startKassen() {
     document.querySelectorAll('.kassen-hex').forEach(hex => {
       if (hex.dataset.team === team) hex.classList.add('kassen-hex-loser');
     });
+    const loserLegendItem = elements.kassenLegend.querySelector(`.kassen-legend-item[data-team="${CSS.escape(team)}"]`);
+    if (loserLegendItem) loserLegendItem.classList.add('kassen-legend-item-loser');
 
     if (kassenSkipRequested) break;
     await kassenInterruptibleDelay(KASSEN_NARRATION_STEP_MS);
@@ -2010,6 +2259,9 @@ async function startKassen() {
       hex.classList.add('kassen-hex-loser');
     }
   });
+  document.querySelectorAll('.kassen-legend-item').forEach(item => {
+    item.classList.toggle('kassen-legend-item-loser', item.dataset.team !== winningTeam);
+  });
 
   elements.kassenCommentary.classList.add('hidden');
   elements.btnStartKassen.classList.remove('hidden');
@@ -2017,10 +2269,19 @@ async function startKassen() {
 
   const candidates = teamMap.get(winningTeam);
   const mvp = candidates[Math.floor(Math.random() * candidates.length)];
-  await showKassenResult(winningTeam, mvp);
+
+  // MVPポイントを名刺データに記録し、ランキングに反映されるよう保存する（モードごとに個別集計）
+  // 通常+1pt、10回記念大会（10の倍数）は+5pt、100回記念大会（100の倍数）は+10pt
+  let mvpPoints = 1;
+  if (isCentennialBattle) mvpPoints = 10;
+  else if (isAnniversaryBattle) mvpPoints = 5;
+  incrementCardMvpCount(mvp, STATE.kassenMode, mvpPoints);
+  saveMetadata().catch(err => console.error('MVP集計の保存に失敗しました:', err));
+
+  await showKassenResult(winningTeam, mvp, mvpPoints, isAnniversaryBattle, isCentennialBattle);
 }
 
-async function showKassenResult(team, mvp) {
+async function showKassenResult(team, mvp, points, isAnniversaryBattle, isCentennialBattle) {
   let imageUrl = '';
   if (mvp.imageId) {
     imageUrl = await fetchCardImage(mvp.imageId);
@@ -2029,6 +2290,8 @@ async function showKassenResult(team, mvp) {
   elements.kassenResult.innerHTML = `
     <div class="kassen-result-card glass-card">
       <div class="kassen-result-badge">${t('kassenResultBadge', { team: escapeHTML(getKassenTeamDisplayLabel(team)) })}</div>
+      ${isCentennialBattle ? `<div class="kassen-anniversary-badge kassen-centennial-badge">${t('kassenCentennialLabel')}</div>` : ''}
+      ${isAnniversaryBattle ? `<div class="kassen-anniversary-badge">${t('kassenAnniversaryLabel')}</div>` : ''}
       <button type="button" id="kassen-mvp-link" class="kassen-mvp kassen-mvp-clickable" title="${t('kassenMvpTitle')}">
         <div class="kassen-mvp-image-wrapper">
           ${imageUrl ? `<img src="${imageUrl}" alt="${escapeHTML(mvp.name)}">` : '<i data-lucide="user"></i>'}
@@ -2038,6 +2301,7 @@ async function showKassenResult(team, mvp) {
           <h3>${escapeHTML(mvp.name)}</h3>
           <div class="alphabet">${escapeHTML(mvp.alphabet)}</div>
         </div>
+        <span class="kassen-mvp-points${(isAnniversaryBattle || isCentennialBattle) ? ' kassen-mvp-points-bonus' : ''}">+${points}pt</span>
         <i data-lucide="chevron-right" class="kassen-mvp-arrow"></i>
       </button>
     </div>

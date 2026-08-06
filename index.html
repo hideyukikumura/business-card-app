@@ -257,6 +257,14 @@
           </div>
 
           <div class="settings-section glass-card">
+            <h3 data-i18n="headingKassenData">合戦データ</h3>
+            <button id="btn-reset-kassen-history" class="btn btn-danger btn-block">
+              <i data-lucide="rotate-ccw"></i>
+              <span data-i18n="btnResetKassenHistory">合戦履歴をリセット</span>
+            </button>
+          </div>
+
+          <div class="settings-section glass-card">
             <h3 data-i18n="headingAppInfo">アプリ情報</h3>
             <ul class="info-list">
               <li>
@@ -270,6 +278,17 @@
             </ul>
           </div>
         </div>
+
+        <!-- 合戦履歴リセットの確認ダイアログ -->
+        <div id="kassen-reset-confirm" class="confirm-overlay hidden">
+          <div class="confirm-box glass">
+            <p data-i18n="confirmResetKassenHistory">すべての合戦履歴をリセットします。よろしいですか？</p>
+            <div class="confirm-actions">
+              <button id="btn-reset-kassen-history-yes" class="btn btn-primary" data-i18n="btnYes">はい</button>
+              <button id="btn-reset-kassen-history-no" class="btn btn-secondary" data-i18n="btnNo">いいえ</button>
+            </div>
+          </div>
+        </div>
       </div>
     </section>
 
@@ -281,7 +300,14 @@
             <i data-lucide="arrow-left"></i>
           </button>
           <h2 data-i18n="headingKassen">合戦モード</h2>
-          <div></div>
+          <div class="header-actions">
+            <button id="btn-kassen-regenerate" class="btn-icon" title="地形再生成" data-i18n-title="titleKassenRegenerate">
+              <i data-lucide="shuffle"></i>
+            </button>
+            <button id="btn-kassen-ranking" class="btn-icon" title="ランキング" data-i18n-title="titleKassenRanking">
+              <i data-lucide="trophy"></i>
+            </button>
+          </div>
         </header>
 
         <div class="kassen-container">
@@ -297,6 +323,7 @@
               <p data-i18n="mapEmpty">名刺が登録されると大陸が生まれます</p>
             </div>
             <div id="kassen-hex-popup" class="kassen-hex-popup hidden"></div>
+            <div id="kassen-battle-count" class="kassen-battle-count"></div>
           </div>
 
           <div id="kassen-legend" class="kassen-legend"></div>
@@ -315,6 +342,24 @@
           </div>
 
           <div id="kassen-result" class="kassen-result hidden"></div>
+
+          <!-- ランキングモード（累計MVP数ランキング） -->
+          <div id="kassen-ranking-view" class="kassen-ranking-view hidden">
+            <h3 class="kassen-ranking-heading" data-i18n="headingKassenRanking">MVPランキング</h3>
+            <div id="kassen-ranking-list" class="kassen-ranking-list"></div>
+            <button id="btn-close-kassen-ranking" class="btn btn-secondary btn-block" data-i18n="btnClose">閉じる</button>
+          </div>
+
+          <!-- 地形再生成の確認ダイアログ -->
+          <div id="kassen-regenerate-confirm" class="confirm-overlay hidden">
+            <div class="confirm-box glass">
+              <p data-i18n="confirmKassenRegenerate">現在の地形をリセットして新しい地形にします。よろしいですか？</p>
+              <div class="confirm-actions">
+                <button id="btn-kassen-regenerate-yes" class="btn btn-primary" data-i18n="btnYes">はい</button>
+                <button id="btn-kassen-regenerate-no" class="btn btn-secondary" data-i18n="btnNo">いいえ</button>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </section>
