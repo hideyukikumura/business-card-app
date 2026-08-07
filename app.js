@@ -60,7 +60,7 @@ const I18N = {
     missionIslandDetected: 'マップに孤島が発生',
     missionAlphabetCount: 'イニシャル{count}文字制覇',
     missionAlphabetHalf: 'イニシャルアルファベット50%制覇',
-    missionAlphabetFull: 'イニシャルアルファベット制覇',
+    missionAlphabetFull: 'イニシャルアルファベット全制覇',
     missionCompleteAll: '全てのミッションをコンプリート',
     missionThanks: 'ありがとう！',
     missionAchieved: '達成済み',
@@ -1751,7 +1751,7 @@ function getUniqueInitialCount() {
 const MISSION_BASE_CATEGORIES = [
   {
     key: 'cards',
-    thresholds: [1, 5, 10, 25, 50, 100, 200, 500, 1000],
+    thresholds: [1, 5, 10, 25, 50, 100, 200, 500],
     getCount: () => STATE.cards.length,
     getThresholdLabel: threshold => t('missionThreshold', { count: threshold }),
   },
