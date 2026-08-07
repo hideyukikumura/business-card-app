@@ -1751,7 +1751,7 @@ function getUniqueInitialCount() {
 const MISSION_BASE_CATEGORIES = [
   {
     key: 'cards',
-    thresholds: [1, 5, 10, 25, 50, 100, 200, 500],
+    thresholds: [1, 5, 10, 25, 50, 75, 100, 200, 500],
     getCount: () => STATE.cards.length,
     getThresholdLabel: threshold => t('missionThreshold', { count: threshold }),
   },
