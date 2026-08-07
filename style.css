@@ -1712,3 +1712,34 @@ body {
   font-weight: 600;
   color: var(--text-primary);
 }
+
+/* 並べ替えモード切り替え時に画面中央へ一瞬表示するポップアップ */
+.sort-mode-popup {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) scale(0.92);
+  background: var(--bg-glass-heavy);
+  border: 1px solid var(--accent-indigo);
+  padding: 20px 28px;
+  border-radius: 16px;
+  box-shadow: var(--shadow-lg), var(--shadow-glow);
+  z-index: 3000;
+  opacity: 0;
+  pointer-events: none;
+  text-align: center;
+  transition: opacity 0.25s ease, transform 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.sort-mode-popup.active {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
+}
+
+.sort-mode-popup-title {
+  font-size: 1.1rem;
+  font-weight: 700;
+  background: var(--accent-gradient);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}

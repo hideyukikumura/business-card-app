@@ -29,6 +29,9 @@ let STATE = {
   })(),
   kassenView: 'map',  // 合戦モード画面内の表示切り替え（'map' or 'ranking'。ランキングは未実装のプレースホルダー）
   islandDetected: false, // マップ上に孤島（どのヘックスにも接していない配備）が一度でも発生したか（Google Driveに保存）
+  // 一度でも達成したミッションのID一覧（Google Driveに保存）。
+  // 合戦データのリセット等で元になる数値が0に戻っても、ここに記録済みのミッションは達成済みのまま保持する
+  missionsAchieved: new Set(),
   tokenClient: null,  // Google OAuth Token Client
   imageCache: {},     // { fileId: blobUrl }
   user: null          // { name, email, avatarUrl }
@@ -53,6 +56,8 @@ const I18N = {
     titleMissions: 'ミッション',
     headingMissions: 'ミッション',
     missionThreshold: '{count}枚登録',
+    missionCardsWithMemo10: 'メモありで名刺を10枚登録',
+    missionCardsWithoutMemo10: 'メモなしで名刺を10枚登録',
     missionThresholdTags: '{count}種類のタグ登録',
     missionThresholdTagBattles: 'タグモードで{count}回合戦',
     missionThresholdInitialBattles: 'イニシャルモードで{count}回合戦',
@@ -70,6 +75,8 @@ const I18N = {
     titleSettings: '設定',
     titleSortNewest: '並べ替え：登録が新しい順',
     titleSortAlphabet: '並べ替え：アルファベット順',
+    sortPopupNewestTitle: '登録順',
+    sortPopupAlphabetTitle: 'アルファベット順',
     searchPlaceholder: '名前・アルファベットで検索...',
     tagAll: 'すべて',
     emptyNoCards: '名刺が登録されていません',
@@ -196,6 +203,8 @@ const I18N = {
     titleMissions: 'Missions',
     headingMissions: 'Missions',
     missionThreshold: '{count}-card milestone',
+    missionCardsWithMemo10: 'Register 10 cards with a memo',
+    missionCardsWithoutMemo10: 'Register 10 cards without a memo',
     missionThresholdTags: '{count}-tag milestone',
     missionThresholdTagBattles: '{count} Tag Mode battles',
     missionThresholdInitialBattles: '{count} Initial Mode battles',
@@ -213,6 +222,8 @@ const I18N = {
     titleSettings: 'Settings',
     titleSortNewest: 'Sort: Newest first',
     titleSortAlphabet: 'Sort: Alphabetical',
+    sortPopupNewestTitle: 'Newest First',
+    sortPopupAlphabetTitle: 'Alphabetical',
     searchPlaceholder: 'Search by name or alphabet...',
     tagAll: 'All',
     emptyNoCards: 'No business cards yet',
@@ -417,6 +428,8 @@ const elements = {
   searchInput: document.getElementById('search-input'),
   btnClearSearch: document.getElementById('btn-clear-search'),
   btnSort: document.getElementById('btn-sort'),
+  sortModePopup: document.getElementById('sort-mode-popup'),
+  sortModePopupTitle: document.getElementById('sort-mode-popup-title'),
   tagFilters: document.getElementById('tag-filters'),
   cardDeck: document.getElementById('card-deck'),
   cardIndicator: document.getElementById('card-indicator'),
@@ -795,7 +808,7 @@ async function getOrCreateMetadataFileId() {
 
   const boundary = 'foo_bar_baz';
   const metadataPart = JSON.stringify(fileMetadata);
-  const mediaPart = JSON.stringify({ cards: [], kassenBattleCount: { tag: 0, initial: 0 }, islandDetected: false }); // 空の名刺リスト
+  const mediaPart = JSON.stringify({ cards: [], kassenBattleCount: { tag: 0, initial: 0 }, islandDetected: false, missionsAchieved: [] }); // 空の名刺リスト
 
   const multipartBody = 
     `\r\n--${boundary}\r\n` +
@@ -828,10 +841,12 @@ async function loadMetadata() {
       STATE.cards = data;
       STATE.kassenBattleCount = readLegacyLocalBattleCount();
       STATE.islandDetected = false;
+      STATE.missionsAchieved = new Set();
     } else {
       STATE.cards = data.cards || [];
       STATE.kassenBattleCount = normalizeKassenBattleCount(data.kassenBattleCount);
       STATE.islandDetected = !!data.islandDetected;
+      STATE.missionsAchieved = new Set(Array.isArray(data.missionsAchieved) ? data.missionsAchieved : []);
     }
   } else {
     throw new Error('Failed to load metadata');
@@ -859,7 +874,7 @@ async function saveMetadata() {
   const res = await driveFetch(`${DRIVE_UPLOAD_BASE}/files/${STATE.metadataFileId}?uploadType=media`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ cards: STATE.cards, kassenBattleCount: STATE.kassenBattleCount, islandDetected: STATE.islandDetected })
+    body: JSON.stringify({ cards: STATE.cards, kassenBattleCount: STATE.kassenBattleCount, islandDetected: STATE.islandDetected, missionsAchieved: [...STATE.missionsAchieved] })
   });
   return res.ok;
 }
@@ -952,6 +967,26 @@ function updateSortButtonUI() {
   elements.btnSort.title = STATE.sortMode === 'alphabet'
     ? t('titleSortAlphabet')
     : t('titleSortNewest');
+}
+
+// 並べ替えボタン押下時、現在の並べ替えモードを画面中央に一瞬表示する
+let sortModePopupTimeout;
+function showSortModePopup() {
+  const isAlphabet = STATE.sortMode === 'alphabet';
+  elements.sortModePopupTitle.textContent = t(isAlphabet ? 'sortPopupAlphabetTitle' : 'sortPopupNewestTitle');
+
+  // 名刺画像（読み込み中のスピナーが出る部分）の縦方向の中心に合わせて表示位置を調整
+  const activeCard = elements.cardDeck.querySelectorAll('.business-card')[currentSwipeIndex];
+  const imageWrapper = activeCard && activeCard.querySelector('.card-image-wrapper');
+  const targetRect = (imageWrapper || elements.cardDeck).getBoundingClientRect();
+  const containerRect = elements.sortModePopup.offsetParent.getBoundingClientRect();
+  elements.sortModePopup.style.top = `${targetRect.top + targetRect.height / 2 - containerRect.top}px`;
+
+  clearTimeout(sortModePopupTimeout);
+  elements.sortModePopup.classList.add('active');
+  sortModePopupTimeout = setTimeout(() => {
+    elements.sortModePopup.classList.remove('active');
+  }, 1200);
 }
 
 function filterCards() {
@@ -1302,6 +1337,7 @@ function registerEventListeners() {
   elements.btnSort.addEventListener('click', () => {
     STATE.sortMode = STATE.sortMode === 'newest' ? 'alphabet' : 'newest';
     updateSortButtonUI();
+    showSortModePopup();
     renderApp();
   });
 
@@ -1738,6 +1774,14 @@ function getTagModeHexCount() {
   return STATE.cards.reduce((sum, card) => sum + getKassenTeamKeys(card, 'tag').length, 0);
 }
 
+// メモが入力されている／されていない名刺の枚数
+function getCardsWithMemoCount() {
+  return STATE.cards.filter(card => card.memo && card.memo.trim()).length;
+}
+function getCardsWithoutMemoCount() {
+  return STATE.cards.filter(card => !card.memo || !card.memo.trim()).length;
+}
+
 // 登録名刺のアルファベットの頭文字（A〜Z）のうち、何種類を制覇したか
 function getUniqueInitialCount() {
   const initialSet = new Set();
@@ -1754,6 +1798,18 @@ const MISSION_BASE_CATEGORIES = [
     thresholds: [1, 5, 10, 25, 50, 75, 100, 200, 500],
     getCount: () => STATE.cards.length,
     getThresholdLabel: threshold => t('missionThreshold', { count: threshold }),
+  },
+  {
+    key: 'cardsWithMemo',
+    thresholds: [10],
+    getCount: () => getCardsWithMemoCount(),
+    getThresholdLabel: () => t('missionCardsWithMemo10'),
+  },
+  {
+    key: 'cardsWithoutMemo',
+    thresholds: [10],
+    getCount: () => getCardsWithoutMemoCount(),
+    getThresholdLabel: () => t('missionCardsWithoutMemo10'),
   },
   {
     // タグは登録数自体に上限を設けていないが、ミッションの達成ラインは最大50種類までとする
@@ -1808,7 +1864,7 @@ const MISSION_BASE_TOTAL = MISSION_BASE_CATEGORIES.reduce((sum, c) => sum + c.th
 function getAchievedBaseMissionCount() {
   return MISSION_BASE_CATEGORIES.reduce((sum, category) => {
     const count = category.getCount();
-    return sum + category.thresholds.filter(th => count >= th).length;
+    return sum + category.thresholds.filter(th => count >= th || STATE.missionsAchieved.has(missionId(category.key, th))).length;
   }, 0);
 }
 
@@ -1838,15 +1894,30 @@ function getAllMissions() {
   MISSION_CATEGORIES.forEach(category => {
     const count = category.getCount();
     category.thresholds.forEach(threshold => {
+      const id = missionId(category.key, threshold);
       merged.push({
-        id: missionId(category.key, threshold),
+        id,
         threshold,
         category,
-        achieved: count >= threshold,
+        achieved: count >= threshold || STATE.missionsAchieved.has(id),
       });
     });
   });
   return merged;
+}
+
+// ライブの達成状況を永続化する。一度達成したミッションは、後で条件を満たさなくなっても達成済みのまま保持する
+function persistAchievedMissions() {
+  let changed = false;
+  getAllMissions().forEach(mission => {
+    if (mission.achieved && !STATE.missionsAchieved.has(mission.id)) {
+      STATE.missionsAchieved.add(mission.id);
+      changed = true;
+    }
+  });
+  if (changed) {
+    saveMetadata().catch(err => console.error('ミッション達成状況の保存に失敗しました:', err));
+  }
 }
 
 // 達成済みだが、まだミッション画面で「？」から達成内容へめくる演出を見せていないミッション
@@ -1856,6 +1927,7 @@ function getNewlyAchievedMissions() {
 
 // トップ画面の「ミッション」ボタンを、未確認の達成があるときだけ発光させる
 function updateMissionsGlow() {
+  persistAchievedMissions();
   if (!elements.btnMissions) return;
   elements.btnMissions.classList.toggle('mission-glow', getNewlyAchievedMissions().length > 0);
 }
