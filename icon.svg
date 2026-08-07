@@ -4,41 +4,93 @@
       <stop offset="0%" stop-color="#1e293b" />
       <stop offset="100%" stop-color="#0f172a" />
     </linearGradient>
-    <linearGradient id="cardGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#6366f1" />
-      <stop offset="50%" stop-color="#8b5cf6" />
-      <stop offset="100%" stop-color="#d946ef" />
+    <linearGradient id="accentGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#3b82f6" />
+      <stop offset="50%" stop-color="#6366f1" />
+      <stop offset="100%" stop-color="#8b5cf6" />
     </linearGradient>
-    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
-      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#000000" flood-opacity="0.5"/>
+    <linearGradient id="goldLight" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#fef9c3" />
+      <stop offset="45%" stop-color="#fbbf24" />
+      <stop offset="100%" stop-color="#d97706" />
+    </linearGradient>
+    <linearGradient id="goldDark" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#f59e0b" />
+      <stop offset="45%" stop-color="#b45309" />
+      <stop offset="100%" stop-color="#78350f" />
+    </linearGradient>
+    <linearGradient id="gemGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fffbeb" />
+      <stop offset="100%" stop-color="#fde68a" />
+    </linearGradient>
+    <filter id="cardShadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="10" stdDeviation="14" flood-color="#000000" flood-opacity="0.45"/>
     </filter>
+    <filter id="crownGlow" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="9" />
+    </filter>
+    <clipPath id="cardClip">
+      <rect x="146" y="207" width="220" height="126" rx="18" />
+    </clipPath>
+    <clipPath id="crownClip">
+      <path d="M 176,225 L 176,207 L 181,180 L 199,199 L 218,155 L 237,199 L 256,130 L 275,199 L 294,155 L 312,199 L 331,180 L 336,207 L 336,225 Z" />
+    </clipPath>
   </defs>
+
   <!-- Background -->
   <rect width="512" height="512" rx="128" fill="url(#bgGrad)" />
-  
+
   <!-- Outer glowing ring -->
-  <rect x="24" y="24" width="464" height="464" rx="104" fill="none" stroke="url(#cardGrad)" stroke-width="4" opacity="0.3" />
+  <rect x="24" y="24" width="464" height="464" rx="104" fill="none" stroke="url(#accentGrad)" stroke-width="4" opacity="0.3" />
 
-  <!-- Business Card Icon Base -->
-  <g filter="url(#shadow)">
-    <!-- Main Card Body -->
-    <rect x="96" y="144" width="320" height="224" rx="24" fill="url(#cardGrad)" />
-    
-    <!-- Design Elements on Card -->
-    <!-- Magnetic strip or dark accent header -->
-    <rect x="96" y="144" width="320" height="48" rx="0" fill="#000" opacity="0.15" />
-    
-    <!-- User Avatar Icon on card -->
-    <circle cx="160" cy="272" r="32" fill="#ffffff" opacity="0.9" />
-    <path d="M 128 336 A 32 32 0 0 1 192 336 Z" fill="#ffffff" opacity="0.9" />
+  <!-- Hex terrain, filling the upper and lower halves -->
+  <g stroke="#0f172a" stroke-width="3" stroke-linejoin="round">
+    <polygon points="130,94 178.5,122 178.5,178 130,206 81.5,178 81.5,122" fill="url(#accentGrad)" opacity="0.95" />
+    <polygon points="227,94 275.5,122 275.5,178 227,206 178.5,178 178.5,122" fill="url(#accentGrad)" opacity="0.8" />
+    <polygon points="324,94 372.5,122 372.5,178 324,206 275.5,178 275.5,122" fill="url(#accentGrad)" opacity="0.65" />
+    <polygon points="421,94 469.5,122 469.5,178 421,206 372.5,178 372.5,122" fill="url(#accentGrad)" opacity="0.9" />
 
-    <!-- Text Lines on Card -->
-    <rect x="220" y="244" width="140" height="12" rx="6" fill="#ffffff" opacity="0.9" />
-    <rect x="220" y="268" width="100" height="8" rx="4" fill="#ffffff" opacity="0.6" />
-    <rect x="220" y="288" width="120" height="8" rx="4" fill="#ffffff" opacity="0.6" />
+    <polygon points="178.5,178 227,206 227,262 178.5,290 130,262 130,206" fill="url(#accentGrad)" opacity="0.75" />
+    <polygon points="275.5,178 324,206 324,262 275.5,290 227,262 227,206" fill="url(#accentGrad)" opacity="0.9" />
+    <polygon points="372.5,178 421,206 421,262 372.5,290 324,262 324,206" fill="url(#accentGrad)" opacity="0.7" />
+
+    <polygon points="130,262 178.5,290 178.5,346 130,374 81.5,346 81.5,290" fill="url(#accentGrad)" opacity="0.95" />
+    <polygon points="227,262 275.5,290 275.5,346 227,374 178.5,346 178.5,290" fill="url(#accentGrad)" opacity="0.8" />
+    <polygon points="324,262 372.5,290 372.5,346 324,374 275.5,346 275.5,290" fill="url(#accentGrad)" opacity="0.65" />
+    <polygon points="421,262 469.5,290 469.5,346 421,374 372.5,346 372.5,290" fill="url(#accentGrad)" opacity="0.85" />
+
+    <polygon points="178.5,346 227,374 227,430 178.5,458 130,430 130,374" fill="url(#accentGrad)" opacity="0.7" />
+    <polygon points="275.5,346 324,374 324,430 275.5,458 227,430 227,374" fill="url(#accentGrad)" opacity="0.9" />
+    <polygon points="372.5,346 421,374 421,430 372.5,458 324,430 324,374" fill="url(#accentGrad)" opacity="0.75" />
   </g>
 
-  <!-- Tag indicator in the corner -->
-  <path d="M 380 120 L 410 120 L 410 150 Z" fill="#d946ef" />
-  <circle cx="395" cy="135" r="4" fill="#ffffff" />
+  <!-- Business card with a gold crown, floating above the terrain -->
+  <g transform="rotate(-8 256 270)" filter="url(#cardShadow)">
+    <rect x="146" y="207" width="220" height="126" rx="18" fill="#f8fafc" />
+    <rect x="146" y="319" width="220" height="14" fill="url(#accentGrad)" clip-path="url(#cardClip)" />
+
+    <!-- crown glow halo -->
+    <path d="M 176,225 L 176,207 L 181,180 L 199,199 L 218,155 L 237,199 L 256,130 L 275,199 L 294,155 L 312,199 L 331,180 L 336,207 L 336,225 Z"
+          fill="#f59e0b" opacity="0.55" filter="url(#crownGlow)" />
+
+    <!-- crown body, two-tone gold split down the center -->
+    <rect x="176" y="122" width="160" height="103" fill="url(#goldLight)" clip-path="url(#crownClip)" />
+    <rect x="176" y="122" width="80" height="103" fill="url(#goldDark)" clip-path="url(#crownClip)" />
+
+    <path d="M 176,225 L 176,207 L 181,180 L 199,199 L 218,155 L 237,199 L 256,130 L 275,199 L 294,155 L 312,199 L 331,180 L 336,207 L 336,225 Z"
+          fill="none" stroke="#78350f" stroke-width="2.5" stroke-linejoin="round" />
+
+    <!-- double base band -->
+    <line x1="176" y1="216" x2="336" y2="216" stroke="#78350f" stroke-width="1.5" opacity="0.6" />
+
+    <!-- center shine seam -->
+    <line x1="256" y1="130" x2="256" y2="225" stroke="#fffbeb" stroke-width="1" opacity="0.5" />
+
+    <!-- diamond gems at each peak -->
+    <rect x="175.5" y="174.5" width="11" height="11" rx="1.5" fill="url(#gemGrad)" stroke="#b45309" stroke-width="1" transform="rotate(45 181 180)" />
+    <rect x="212.5" y="149.5" width="11" height="11" rx="1.5" fill="url(#gemGrad)" stroke="#b45309" stroke-width="1" transform="rotate(45 218 155)" />
+    <rect x="250.5" y="124.5" width="11" height="11" rx="1.5" fill="url(#gemGrad)" stroke="#b45309" stroke-width="1" transform="rotate(45 256 130)" />
+    <rect x="288.5" y="149.5" width="11" height="11" rx="1.5" fill="url(#gemGrad)" stroke="#b45309" stroke-width="1" transform="rotate(45 294 155)" />
+    <rect x="325.5" y="174.5" width="11" height="11" rx="1.5" fill="url(#gemGrad)" stroke="#b45309" stroke-width="1" transform="rotate(45 331 180)" />
+  </g>
 </svg>
