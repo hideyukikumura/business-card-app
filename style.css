@@ -10,11 +10,11 @@
   --border-glass: rgba(255, 255, 255, 0.08);
   --border-glow: rgba(99, 102, 241, 0.2);
 
-  --accent-indigo: #6366f1;
-  --accent-purple: #8b5cf6;
-  --accent-pink: #d946ef;
-  --accent-gradient: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #d946ef 100%);
-  --accent-glow: 0 0 20px rgba(99, 102, 241, 0.4);
+  --accent-indigo: #3b82f6;
+  --accent-purple: #6366f1;
+  --accent-pink: #8b5cf6;
+  --accent-gradient: linear-gradient(135deg, #3b82f6 0%, #6366f1 50%, #8b5cf6 100%);
+  --accent-glow: 0 0 20px rgba(59, 130, 246, 0.4);
 
   --text-primary: #f8fafc;
   --text-secondary: #94a3b8;
@@ -618,6 +618,13 @@ body {
   font-weight: 600;
   font-size: 0.9rem;
   color: var(--text-secondary);
+  z-index: 10;
+}
+
+.card-viewer-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 16px;
   z-index: 10;
 }
 
@@ -1235,6 +1242,99 @@ body {
   display: flex;
   flex-direction: column;
   gap: 16px;
+}
+
+.missions-container {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.missions-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.mission-item {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border-glass);
+  opacity: 0.6;
+  transition: var(--transition-smooth);
+}
+
+.mission-item.mission-achieved {
+  opacity: 1;
+  border-color: rgba(99, 102, 241, 0.4);
+  background: rgba(99, 102, 241, 0.08);
+}
+
+.mission-icon {
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  color: var(--text-muted);
+}
+
+.mission-item.mission-achieved .mission-icon {
+  background: var(--accent-gradient);
+  color: #fff;
+}
+
+.mission-icon i {
+  width: 20px;
+  height: 20px;
+}
+
+.mission-info {
+  min-width: 0;
+}
+
+.mission-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.mission-status {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.mission-item.mission-achieved .mission-status {
+  color: #a5b4fc;
+}
+
+.mission-question {
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: var(--text-muted);
+}
+
+@keyframes mission-reveal-glow {
+  0% { box-shadow: 0 0 0 rgba(250, 204, 21, 0); transform: scale(1); }
+  40% { box-shadow: 0 0 24px 6px rgba(250, 204, 21, 0.55); transform: scale(1.02); }
+  100% { box-shadow: 0 0 0 rgba(250, 204, 21, 0); transform: scale(1); }
+}
+
+.mission-item.mission-revealing {
+  animation: mission-reveal-glow 0.9s ease-in-out;
+  border-color: rgba(250, 204, 21, 0.7);
+}
+
+.btn-icon.mission-glow {
+  border-color: rgba(250, 204, 21, 0.6);
+  color: #facc15;
 }
 
 .kassen-ranking-heading {

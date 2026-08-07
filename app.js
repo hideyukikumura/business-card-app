@@ -18,7 +18,17 @@ let STATE = {
   // これまでの合戦数（Google Driveのmetadata.jsonに保存。タグモード/イニシャルモードそれぞれ別に保持）
   // サインイン直後のsyncWithDrive()内でloadMetadata()が実際の値に上書きする
   kassenBattleCount: { tag: 0, initial: 0 },
+  // 既にミッション画面で「？」から達成内容へめくる演出を見せた達成済みしきい値（この端末に保存）
+  missionsSeen: (() => {
+    try {
+      const raw = JSON.parse(localStorage.getItem('missionsSeen') || '[]');
+      return new Set(Array.isArray(raw) ? raw : []);
+    } catch (e) {
+      return new Set();
+    }
+  })(),
   kassenView: 'map',  // 合戦モード画面内の表示切り替え（'map' or 'ranking'。ランキングは未実装のプレースホルダー）
+  islandDetected: false, // マップ上に孤島（どのヘックスにも接していない配備）が一度でも発生したか（Google Driveに保存）
   tokenClient: null,  // Google OAuth Token Client
   imageCache: {},     // { fileId: blobUrl }
   user: null          // { name, email, avatarUrl }
@@ -33,13 +43,30 @@ const DRIVE_UPLOAD_BASE = 'https://www.googleapis.com/upload/drive/v3';
 // -------------------------------------------------------------
 const I18N = {
   ja: {
-    pageTitle: 'CardVault',
+    pageTitle: 'Cardvalia',
     btnLogin: 'Google アカウントでサインイン',
     btnOpenSetup: '初期設定 (OAuth クライアントID)',
 
     titleSync: '同期',
     titleAdd: '新規登録',
     titleKassen: '合戦モード',
+    titleMissions: 'ミッション',
+    headingMissions: 'ミッション',
+    missionThreshold: '{count}枚登録',
+    missionThresholdTags: '{count}種類のタグ登録',
+    missionThresholdTagBattles: 'タグモードで{count}回合戦',
+    missionThresholdInitialBattles: 'イニシャルモードで{count}回合戦',
+    missionHexCount100: 'マップのヘックス総数100個達成',
+    missionIslandDetected: 'マップに孤島が発生',
+    missionAlphabetCount: 'イニシャル{count}文字制覇',
+    missionAlphabetHalf: 'イニシャルアルファベット50%制覇',
+    missionAlphabetFull: 'イニシャルアルファベット制覇',
+    missionCompleteAll: '全てのミッションをコンプリート',
+    missionThanks: 'ありがとう！',
+    missionAchieved: '達成済み',
+    missionMystery: '？？？',
+    missionLocked: '名刺を登録して解放しよう',
+    missionLockedBattle: '合戦をして解放しよう',
     titleSettings: '設定',
     titleSortNewest: '並べ替え：登録が新しい順',
     titleSortAlphabet: '並べ替え：アルファベット順',
@@ -159,13 +186,30 @@ const I18N = {
     userNoName: 'ユーザー名なし'
   },
   en: {
-    pageTitle: 'CardVault',
+    pageTitle: 'Cardvalia',
     btnLogin: 'Sign in with Google',
     btnOpenSetup: 'Initial Setup (OAuth Client ID)',
 
     titleSync: 'Sync',
     titleAdd: 'Add Card',
     titleKassen: 'Showdown Mode',
+    titleMissions: 'Missions',
+    headingMissions: 'Missions',
+    missionThreshold: '{count}-card milestone',
+    missionThresholdTags: '{count}-tag milestone',
+    missionThresholdTagBattles: '{count} Tag Mode battles',
+    missionThresholdInitialBattles: '{count} Initial Mode battles',
+    missionHexCount100: 'Reach 100 hexes on the map',
+    missionIslandDetected: 'An island appeared on the map',
+    missionAlphabetCount: 'Conquer {count} initials',
+    missionAlphabetHalf: 'Conquer 50% of the alphabet',
+    missionAlphabetFull: 'Conquer the entire alphabet',
+    missionCompleteAll: 'Complete All Missions',
+    missionThanks: 'Thank you!',
+    missionAchieved: 'Achieved',
+    missionMystery: '???',
+    missionLocked: 'Keep adding cards to unlock',
+    missionLockedBattle: 'Fight a Showdown to unlock',
     titleSettings: 'Settings',
     titleSortNewest: 'Sort: Newest first',
     titleSortAlphabet: 'Sort: Alphabetical',
@@ -344,6 +388,11 @@ function applyLanguage(lang) {
     updateKassenBattleCountDisplay();
     if (STATE.kassenView === 'ranking') renderKassenRanking();
   }
+
+  // ミッション画面表示中のみ再描画
+  if (document.getElementById('screen-missions').classList.contains('active')) {
+    renderMissions();
+  }
 }
 
 // -------------------------------------------------------------
@@ -356,12 +405,14 @@ const elements = {
   screenMain: document.getElementById('screen-main'),
   screenAdd: document.getElementById('screen-add'),
   screenSettings: document.getElementById('screen-settings'),
+  screenMissions: document.getElementById('screen-missions'),
   // Auth Screen
   btnLogin: document.getElementById('btn-login'),
   btnOpenSetup: document.getElementById('btn-open-setup'),
   // Main Screen
   btnSync: document.getElementById('btn-sync'),
   btnAddCard: document.getElementById('btn-add-card'),
+  btnMissions: document.getElementById('btn-missions'),
   btnSettings: document.getElementById('btn-settings'),
   searchInput: document.getElementById('search-input'),
   btnClearSearch: document.getElementById('btn-clear-search'),
@@ -407,6 +458,9 @@ const elements = {
   kassenResetConfirm: document.getElementById('kassen-reset-confirm'),
   btnResetKassenHistoryYes: document.getElementById('btn-reset-kassen-history-yes'),
   btnResetKassenHistoryNo: document.getElementById('btn-reset-kassen-history-no'),
+  // Missions Screen（ミッション）
+  btnCloseMissions: document.getElementById('btn-close-missions'),
+  missionsList: document.getElementById('missions-list'),
   // Kassen Mode Screen（合戦モード）
   btnKassen: document.getElementById('btn-kassen'),
   btnCloseKassen: document.getElementById('btn-close-kassen'),
@@ -741,7 +795,7 @@ async function getOrCreateMetadataFileId() {
 
   const boundary = 'foo_bar_baz';
   const metadataPart = JSON.stringify(fileMetadata);
-  const mediaPart = JSON.stringify({ cards: [], kassenBattleCount: { tag: 0, initial: 0 } }); // 空の名刺リスト
+  const mediaPart = JSON.stringify({ cards: [], kassenBattleCount: { tag: 0, initial: 0 }, islandDetected: false }); // 空の名刺リスト
 
   const multipartBody = 
     `\r\n--${boundary}\r\n` +
@@ -773,9 +827,11 @@ async function loadMetadata() {
       // 旧形式（名刺配列のみ）。合戦数はこの端末のlocalStorageに残っていれば一度だけ引き継ぐ
       STATE.cards = data;
       STATE.kassenBattleCount = readLegacyLocalBattleCount();
+      STATE.islandDetected = false;
     } else {
       STATE.cards = data.cards || [];
       STATE.kassenBattleCount = normalizeKassenBattleCount(data.kassenBattleCount);
+      STATE.islandDetected = !!data.islandDetected;
     }
   } else {
     throw new Error('Failed to load metadata');
@@ -803,7 +859,7 @@ async function saveMetadata() {
   const res = await driveFetch(`${DRIVE_UPLOAD_BASE}/files/${STATE.metadataFileId}?uploadType=media`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ cards: STATE.cards, kassenBattleCount: STATE.kassenBattleCount })
+    body: JSON.stringify({ cards: STATE.cards, kassenBattleCount: STATE.kassenBattleCount, islandDetected: STATE.islandDetected })
   });
   return res.ok;
 }
@@ -888,6 +944,7 @@ function renderApp() {
   filterCards();
   renderFilters();
   renderCards();
+  updateMissionsGlow();
 }
 
 // 並べ替えボタンのツールチップ表示を現在のモードに合わせて更新
@@ -1361,6 +1418,12 @@ function registerEventListeners() {
     resetKassenHistory();
   });
 
+  // ミッション：開く・閉じる
+  elements.btnMissions.addEventListener('click', openMissionsScreen);
+  elements.btnCloseMissions.addEventListener('click', () => {
+    showScreen('screen-main');
+  });
+
   // 合戦モード：開く・閉じる
   elements.btnKassen.addEventListener('click', openKassenMode);
   elements.btnCloseKassen.addEventListener('click', () => {
@@ -1657,6 +1720,196 @@ const HEX_DIRECTIONS = [
   { q: -1, r: 0 }, { q: -1, r: 1 }, { q: 0, r: 1 }
 ];
 
+// -------------------------------------------------------------
+// MISSIONS（名刺登録数・タグ登録数・合戦数・イニシャル制覇に応じたミッション達成）
+// カテゴリー分けは表示せず、あえて種類の分からない一つのリストとして並べることで
+// 「？」を開けるまで何のミッションか分からないミステリアスな体験にする
+// -------------------------------------------------------------
+function getUniqueTagCount() {
+  const tagSet = new Set();
+  STATE.cards.forEach(card => {
+    if (card.tags) card.tags.forEach(tag => tagSet.add(tag));
+  });
+  return tagSet.size;
+}
+
+// タグモードの地図に配備されるヘックスの総数（複数タグを持つ名刺は複数ヘックス分カウントされる）
+function getTagModeHexCount() {
+  return STATE.cards.reduce((sum, card) => sum + getKassenTeamKeys(card, 'tag').length, 0);
+}
+
+// 登録名刺のアルファベットの頭文字（A〜Z）のうち、何種類を制覇したか
+function getUniqueInitialCount() {
+  const initialSet = new Set();
+  STATE.cards.forEach(card => {
+    const initial = (card.alphabet || '').trim().charAt(0).toUpperCase();
+    if (initial >= 'A' && initial <= 'Z') initialSet.add(initial);
+  });
+  return initialSet.size;
+}
+
+const MISSION_BASE_CATEGORIES = [
+  {
+    key: 'cards',
+    thresholds: [1, 5, 10, 25, 50, 100, 200, 500, 1000],
+    getCount: () => STATE.cards.length,
+    getThresholdLabel: threshold => t('missionThreshold', { count: threshold }),
+  },
+  {
+    // タグは登録数自体に上限を設けていないが、ミッションの達成ラインは最大50種類までとする
+    key: 'tags',
+    thresholds: [1, 5, 10, 15, 20, 30, 40, 50],
+    getCount: () => getUniqueTagCount(),
+    getThresholdLabel: threshold => t('missionThresholdTags', { count: threshold }),
+  },
+  {
+    key: 'tagBattles',
+    thresholds: [1, 5, 10, 25, 50, 100],
+    getCount: () => getKassenBattleCount('tag'),
+    getThresholdLabel: threshold => t('missionThresholdTagBattles', { count: threshold }),
+    lockedStatusKey: 'missionLockedBattle',
+  },
+  {
+    key: 'initialBattles',
+    thresholds: [1, 5, 10, 25, 50, 100],
+    getCount: () => getKassenBattleCount('initial'),
+    getThresholdLabel: threshold => t('missionThresholdInitialBattles', { count: threshold }),
+    lockedStatusKey: 'missionLockedBattle',
+  },
+  {
+    // タグモードの地図上のヘックス総数（複数タグ持ちの名刺は複数ヘックスとしてカウントされる）
+    key: 'hexCount',
+    thresholds: [100],
+    getCount: () => getTagModeHexCount(),
+    getThresholdLabel: () => t('missionHexCount100'),
+  },
+  {
+    // マップに孤島（どのヘックスにも接していない配備）が一度でも発生したか
+    key: 'island',
+    thresholds: [1],
+    getCount: () => (STATE.islandDetected ? 1 : 0),
+    getThresholdLabel: () => t('missionIslandDetected'),
+  },
+  {
+    // イニシャルアルファベット制覇：10個、50%（13文字）、100%（26文字）
+    key: 'alphabet',
+    thresholds: [10, 13, 26],
+    getCount: () => getUniqueInitialCount(),
+    getThresholdLabel: threshold => {
+      if (threshold >= 26) return t('missionAlphabetFull');
+      if (threshold === 13) return t('missionAlphabetHalf');
+      return t('missionAlphabetCount', { count: threshold });
+    },
+  },
+];
+
+// 上記すべてのミッションが達成された数（コンプリートミッション自身は含まない）
+const MISSION_BASE_TOTAL = MISSION_BASE_CATEGORIES.reduce((sum, c) => sum + c.thresholds.length, 0);
+function getAchievedBaseMissionCount() {
+  return MISSION_BASE_CATEGORIES.reduce((sum, category) => {
+    const count = category.getCount();
+    return sum + category.thresholds.filter(th => count >= th).length;
+  }, 0);
+}
+
+const MISSION_CATEGORIES = [
+  ...MISSION_BASE_CATEGORIES,
+  {
+    // 他の全ミッションを達成すると解放される、最後の総仕上げミッション
+    key: 'completionist',
+    thresholds: [MISSION_BASE_TOTAL],
+    getCount: () => getAchievedBaseMissionCount(),
+    getThresholdLabel: () => t('missionCompleteAll'),
+    achievedStatusKey: 'missionThanks',
+  },
+];
+
+function missionId(categoryKey, threshold) {
+  return `${categoryKey}-${threshold}`;
+}
+
+function saveMissionsSeen() {
+  localStorage.setItem('missionsSeen', JSON.stringify([...STATE.missionsSeen]));
+}
+
+// 見出しは表示しないが、並び順自体はカテゴリーごとにまとめる
+function getAllMissions() {
+  const merged = [];
+  MISSION_CATEGORIES.forEach(category => {
+    const count = category.getCount();
+    category.thresholds.forEach(threshold => {
+      merged.push({
+        id: missionId(category.key, threshold),
+        threshold,
+        category,
+        achieved: count >= threshold,
+      });
+    });
+  });
+  return merged;
+}
+
+// 達成済みだが、まだミッション画面で「？」から達成内容へめくる演出を見せていないミッション
+function getNewlyAchievedMissions() {
+  return getAllMissions().filter(m => m.achieved && !STATE.missionsSeen.has(m.id));
+}
+
+// トップ画面の「ミッション」ボタンを、未確認の達成があるときだけ発光させる
+function updateMissionsGlow() {
+  if (!elements.btnMissions) return;
+  elements.btnMissions.classList.toggle('mission-glow', getNewlyAchievedMissions().length > 0);
+}
+
+function openMissionsScreen() {
+  renderMissions();
+  showScreen('screen-missions');
+}
+
+function renderMissions() {
+  const missions = getAllMissions();
+  const newlyAchieved = missions.filter(m => m.achieved && !STATE.missionsSeen.has(m.id));
+
+  elements.missionsList.innerHTML = missions.map(mission => {
+    const revealed = mission.achieved && STATE.missionsSeen.has(mission.id);
+    return `
+      <div class="mission-item${revealed ? ' mission-achieved' : ''}" data-mission-id="${mission.id}">
+        <div class="mission-icon">${revealed ? '<i data-lucide="check-circle-2"></i>' : '<span class="mission-question">？</span>'}</div>
+        <div class="mission-info">
+          <div class="mission-title">${revealed ? mission.category.getThresholdLabel(mission.threshold) : t('missionMystery')}</div>
+          <div class="mission-status">${revealed ? t(mission.category.achievedStatusKey || 'missionAchieved') : t(mission.category.lockedStatusKey || 'missionLocked')}</div>
+        </div>
+      </div>
+    `;
+  }).join('');
+  lucide.createIcons();
+
+  if (newlyAchieved.length > 0) revealNewMissions(newlyAchieved);
+}
+
+// 新規達成したミッションを、少し間を置きながら順番に光らせて「？」から達成内容へめくる
+function revealNewMissions(missions) {
+  missions.forEach((mission, i) => {
+    setTimeout(() => {
+      const item = elements.missionsList.querySelector(`.mission-item[data-mission-id="${mission.id}"]`);
+      if (!item) return;
+      item.classList.add('mission-revealing');
+
+      setTimeout(() => {
+        item.querySelector('.mission-icon').innerHTML = '<i data-lucide="check-circle-2"></i>';
+        item.querySelector('.mission-title').textContent = mission.category.getThresholdLabel(mission.threshold);
+        item.querySelector('.mission-status').textContent = t(mission.category.achievedStatusKey || 'missionAchieved');
+        item.classList.remove('mission-revealing');
+        item.classList.add('mission-achieved');
+        lucide.createIcons();
+
+        STATE.missionsSeen.add(mission.id);
+        saveMissionsSeen();
+        updateMissionsGlow();
+      }, 900);
+    }, i * 400 + 300);
+  });
+}
+
 function openKassenMode() {
   STATE.kassenMode = 'tag';
   document.querySelectorAll('.kassen-mode-btn').forEach(b => {
@@ -1819,6 +2072,41 @@ function getKassenTeamColor(sortedTeamKeys, key) {
   const coloredKeys = sortedTeamKeys.filter(k => !KASSEN_NEUTRAL_KEYS.includes(k));
   const idx = coloredKeys.indexOf(key);
   return KASSEN_PALETTE[idx % KASSEN_PALETTE.length];
+}
+
+// マップ上の全ヘックス（チーム問わず）が1つの陸地としてつながっているかを判定する。
+// 開始点から隣接ヘックスをたどれない配備が残れば「孤島」が存在するということ。
+function detectKassenIslandExists(deployments) {
+  if (deployments.length < 2) return false;
+
+  const cellSet = new Set(deployments.map(d => kassenCellKey(d.pos.q, d.pos.r)));
+  const visited = new Set();
+  const startKey = kassenCellKey(deployments[0].pos.q, deployments[0].pos.r);
+  visited.add(startKey);
+  const queue = [deployments[0].pos];
+
+  while (queue.length) {
+    const cur = queue.shift();
+    HEX_DIRECTIONS.forEach(dir => {
+      const nq = cur.q + dir.q;
+      const nr = cur.r + dir.r;
+      const key = kassenCellKey(nq, nr);
+      if (cellSet.has(key) && !visited.has(key)) {
+        visited.add(key);
+        queue.push({ q: nq, r: nr });
+      }
+    });
+  }
+
+  return visited.size < cellSet.size;
+}
+
+// 一度でも孤島を検出したら、以降は地形を再生成しても達成状態を保持する
+function markIslandDetected() {
+  if (STATE.islandDetected) return;
+  STATE.islandDetected = true;
+  saveMetadata().catch(err => console.error('孤島検出の保存に失敗しました:', err));
+  updateMissionsGlow();
 }
 
 function kassenCellKey(q, r) {
@@ -2111,6 +2399,10 @@ function renderKassenMap() {
       if (pos) deployments.push({ card, team, pos });
     });
   });
+
+  if (detectKassenIslandExists(deployments)) {
+    markIslandDetected();
+  }
 
   const hexSize = 6;
   const pixelCoords = deployments.map(d => hexAxialToPixel(d.pos.q, d.pos.r, hexSize));
