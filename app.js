@@ -1892,6 +1892,7 @@ function revealNewMissions(missions) {
     setTimeout(() => {
       const item = elements.missionsList.querySelector(`.mission-item[data-mission-id="${mission.id}"]`);
       if (!item) return;
+      item.scrollIntoView({ behavior: 'smooth', block: 'center' });
       item.classList.add('mission-revealing');
 
       setTimeout(() => {
